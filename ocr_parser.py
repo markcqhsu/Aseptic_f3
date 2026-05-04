@@ -99,7 +99,7 @@ def _parse_table(rows: list, full_text: str) -> list:
             continue
 
         qty     = _extract_qty(row, qty_x)
-        pallets = _extract_pallets(row, pallets_x)
+        pallets = _extract_pallets(row, pallets_x, qty_x)
         result.append({"code": code, "qty": qty, "pallets": pallets})
 
     return result
@@ -159,8 +159,10 @@ def _extract_qty(row_items: list, qty_x) -> int:
     return max(c[1] for c in candidates)
 
 
-def _extract_pallets(row_items: list, pallets_x) -> int:
-    """從一列中擷取棧板數（X 座標最接近 pallets_x 的正整數）"""
+def _extract_pallets(row_items: list, pallets_x, qty_x=None) -> int:
+    """從一列中擷取棧板數。
+    棧板欄必定在數量欄右側，故只考慮 X > qty_x 的候選值以排除數量數字。
+    """
     if pallets_x is None:
         return 0
     candidates = []
@@ -169,7 +171,10 @@ def _extract_pallets(row_items: list, pallets_x) -> int:
         if re.match(r'^\d+$', clean):
             n = int(clean)
             if 1 <= n <= 999:
-                candidates.append((item["x"], n))
+                x = item["x"]
+                if qty_x is not None and x <= qty_x:
+                    continue
+                candidates.append((x, n))
     if not candidates:
         return 0
     return min(candidates, key=lambda c: abs(c[0] - pallets_x))[1]

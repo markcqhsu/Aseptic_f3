@@ -313,7 +313,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.1.0</span>
+  <span class="version-badge">v1.1.1</span>
 </header>
 
 <div class="container">
@@ -362,6 +362,14 @@
   <!-- Step 2: 確認辨識結果 -->
   <div class="card" id="result-card" style="display:none">
     <h2><span class="step-badge">2</span>確認辨識結果</h2>
+    <div id="order-info-bar" style="
+      background:#e8f0fe; border:1px solid #b0c4f5; border-radius:7px;
+      padding:9px 16px; margin-bottom:14px; font-size:.88rem;
+      display:flex; flex-wrap:wrap; gap:20px; align-items:center;
+    ">
+      <span><strong style="color:#1a3c6e">日期：</strong><span id="bar-date" style="font-family:Consolas,monospace;color:#333"></span></span>
+      <span><strong style="color:#1a3c6e">所別/備註：</strong><span id="bar-warehouse" style="color:#333"></span></span>
+    </div>
 
     <div class="meta-strip">
       <div class="meta-item">
@@ -568,6 +576,10 @@
     document.getElementById("inp-date").value      = data.date      || "";
     document.getElementById("inp-warehouse").value = data.warehouse || "";
     document.getElementById("inp-shipment").value  = data.shipment_no || "";
+
+    // 更新頂部資訊欄
+    document.getElementById("bar-date").textContent      = data.date      || "—";
+    document.getElementById("bar-warehouse").textContent = data.warehouse || "—";
 
     const tbody = document.getElementById("items-body");
     tbody.innerHTML = "";
