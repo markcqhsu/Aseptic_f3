@@ -313,7 +313,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.1.2</span>
+  <span class="version-badge">v1.2.0</span>
 </header>
 
 <div class="container">
@@ -469,8 +469,7 @@
 
   // ── State ────────────────────────────────────────────────────────────────
   let selectedFile = null;
-  let session      = [];   // [{date, warehouse, items:[{code,qty}]}]
-  let pendingIndex = null;
+  let session      = [];   // [{date, warehouse, items:[{code,qty}]}]  (client-side only)
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
   const dropZone = document.getElementById("drop-zone");
@@ -572,7 +571,6 @@
   }
 
   function fillResult(data) {
-    pendingIndex = data.index ?? null;
     document.getElementById("inp-date").value      = data.date      || "";
     document.getElementById("inp-warehouse").value = data.warehouse || "";
     document.getElementById("inp-shipment").value  = data.shipment_no || "";
@@ -643,8 +641,8 @@
 
   function addItemRow() { appendItemRow(); }
 
-  // ── Session management ───────────────────────────────────────────────────
-  async function addToSession() {
+  // ── Session management (client-side only) ───────────────────────────────
+  function addToSession() {
     const date      = document.getElementById("inp-date").value.trim();
     const warehouse = document.getElementById("inp-warehouse").value.trim();
 
@@ -660,25 +658,7 @@
       return;
     }
 
-    const entry = { date, warehouse, items };
-
-    if (pendingIndex !== null) {
-      try {
-        await fetch(`${API}/session/${pendingIndex}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(entry),
-        });
-        session[pendingIndex] = entry;
-      } catch (_) {
-        if (session.length <= pendingIndex) session.push(entry);
-        else session[pendingIndex] = entry;
-      }
-    } else {
-      session.push(entry);
-    }
-
-    pendingIndex = null;
+    session.push({ date, warehouse, items });
     renderSession();
     document.getElementById("result-card").style.display = "none";
     clearUpload();
@@ -686,15 +666,13 @@
     setStatus("", "");
   }
 
-  async function removeOrder(idx) {
-    try { await fetch(`${API}/session/${idx}`, { method: "DELETE" }); } catch (_) {}
+  function removeOrder(idx) {
     session.splice(idx, 1);
     renderSession();
   }
 
-  async function clearSession() {
+  function clearSession() {
     if (!confirm("確定要清除所有調撥單資料嗎？")) return;
-    try { await fetch(`${API}/session`, { method: "DELETE" }); } catch (_) {}
     session = [];
     renderSession();
   }
