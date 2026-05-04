@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>宏全三廠 調撥單辨識系統</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a3c6e;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; }
+    .version-badge {
+      font-size: .7rem;
+      background: rgba(255,255,255,.2);
+      border-radius: 10px;
+      padding: 2px 8px;
+      letter-spacing: .5px;
+    }
+
+    .container { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: .95rem;
+      font-weight: 700;
+      color: #1a3c6e;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-badge {
+      background: #1a3c6e;
+      color: #fff;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      font-size: .75rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed #b0bac9;
+      border-radius: 10px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: background .2s, border-color .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-zone:not(.has-image):hover,
+    .upload-zone.drag {
+      background: #eef2ff;
+      border-color: #4a6fa5;
+    }
+    .upload-zone.has-image {
+      padding: 0;
+      border-style: solid;
+      border-color: #c8d4e8;
+    }
+    .upload-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2;
+    }
+    .upload-icon { color: #8899bb; margin-bottom: 10px; }
+    .upload-zone p { color: #667; font-size: .9rem; }
+    .upload-zone .hint { font-size: .78rem; color: #aaa; margin-top: 4px; }
+    #preview-img {
+      width: 100%; max-height: 380px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: none;
+      vertical-align: top;
+    }
+    .upload-replace-overlay {
+      display: none;
+      position: absolute; inset: 0; z-index: 1;
+      background: rgba(0,0,0,.45);
+      color: #fff;
+      font-size: 1rem; font-weight: 600;
+      align-items: center; justify-content: center;
+      gap: 8px;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .upload-zone.has-image:hover .upload-replace-overlay { display: flex; }
+
+    /* ── Progress ── */
+    #progress-wrap { display: none; margin-top: 16px; }
+    .progress-bar-track {
+      background: #e8ecf2; border-radius: 99px;
+      height: 8px; overflow: hidden; margin-bottom: 8px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #1a3c6e, #4a90d9);
+      border-radius: 99px; width: 0%;
+      transition: width .4s ease;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0%,100% { filter: brightness(1); }
+      50%      { filter: brightness(1.2); }
+    }
+    .progress-steps { display: flex; gap: 6px; flex-wrap: wrap; font-size: .78rem; }
+    .progress-step {
+      padding: 3px 10px; border-radius: 99px;
+      background: #e8ecf2; color: #778;
+      transition: background .3s, color .3s;
+    }
+    .progress-step.active { background: #1a3c6e; color: #fff; }
+    .progress-step.done   { background: #1e7e3e; color: #fff; }
+
+    /* ── Status ── */
+    #status {
+      font-size: .85rem; padding: 8px 12px;
+      border-radius: 6px; display: none; margin-top: 10px;
+    }
+    #status.error { background: #fce8e8; color: #8b0000; display: block; }
+    #status.ok    { background: #e8f5e9; color: #1e5c2e; display: block; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 9px 22px;
+      border: none; border-radius: 7px;
+      font-size: .9rem; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { opacity: .85; }
+    .btn-primary { background: #1a3c6e; color: #fff; }
+    .btn-success { background: #1e7e3e; color: #fff; }
+    .btn-outline { background: #fff; color: #1a3c6e; border: 1.5px solid #1a3c6e; }
+    .btn-danger  { background: #fff; color: #b00; border: 1.5px solid #b00; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+    /* ── Meta strip ── */
+    .meta-strip {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      background: #f5f7fa; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 14px; font-size: .85rem;
+    }
+    .meta-item label { font-weight: 600; color: #556; margin-right: 4px; }
+    .meta-item input {
+      border: 1px solid #ccc; border-radius: 5px;
+      padding: 3px 8px; font-size: .85rem; width: 130px;
+    }
+
+    /* ── OCR result table ── */
+    .table-wrap { overflow-x: auto; }
+    .items-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: .85rem;
+    }
+    .items-table th {
+      background: #1a3c6e; color: #fff;
+      padding: 8px 12px; text-align: left;
+      font-weight: 600; white-space: nowrap;
+    }
+    .items-table td {
+      border: 1px solid #dde;
+      padding: 5px 10px;
+      vertical-align: middle;
+    }
+    .items-table tr:nth-child(even) td { background: #f8f9fc; }
+    .items-table tr:hover td { background: #eef2ff; }
+    .items-table td.code { font-family: Consolas, monospace; font-weight: 700; color: #cc0000; }
+    .items-table td input {
+      border: 1px solid #ccc; border-radius: 4px;
+      padding: 3px 8px; width: 90px;
+      font-size: .85rem; text-align: right;
+    }
+    .items-table td input:focus { outline: 2px solid #4a6fa5; border-color: transparent; }
+
+    /* ── Unmatched warning ── */
+    .unmatched-box {
+      margin-top: 12px;
+      background: #fff8e1; border: 1px solid #f0c040;
+      border-radius: 7px; padding: 10px 14px; font-size: .83rem;
+    }
+    .unmatched-box strong { color: #7a5500; }
+    .unmatched-list { margin-top: 4px; color: #7a5500; }
+
+    /* ── Session list ── */
+    .session-empty {
+      text-align: center; color: #aaa;
+      padding: 24px; font-size: .9rem;
+    }
+    .order-card {
+      border: 1px solid #dde; border-radius: 8px;
+      padding: 12px 16px; margin-bottom: 10px;
+      display: flex; align-items: flex-start; gap: 14px;
+    }
+    .order-card:last-child { margin-bottom: 0; }
+    .order-num {
+      background: #1a3c6e; color: #fff;
+      border-radius: 6px; padding: 2px 10px;
+      font-size: .8rem; font-weight: 700;
+      white-space: nowrap; flex-shrink: 0;
+      align-self: center;
+    }
+    .order-meta { flex: 1; min-width: 0; }
+    .order-meta-row {
+      font-size: .83rem; color: #556;
+      display: flex; flex-wrap: wrap; gap: 12px;
+      margin-bottom: 6px;
+    }
+    .order-meta-row span strong { color: #222; }
+    .order-items {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .item-chip {
+      background: #eef2ff; border: 1px solid #c5cfe8;
+      border-radius: 5px; padding: 2px 9px;
+      font-size: .78rem; font-family: Consolas, monospace;
+    }
+    .item-chip .qty { color: #1a3c6e; font-weight: 700; }
+    .order-actions { display: flex; gap: 8px; flex-shrink: 0; align-self: center; }
+    .btn-icon {
+      background: none; border: 1px solid #ccc;
+      border-radius: 6px; padding: 4px 10px;
+      cursor: pointer; font-size: .8rem; color: #556;
+      transition: all .15s;
+    }
+    .btn-icon:hover { background: #fce8e8; border-color: #b00; color: #b00; }
+
+    /* ── Export section ── */
+    .export-summary {
+      background: #f5f7fa; border-radius: 8px;
+      padding: 12px 16px; margin-bottom: 14px;
+      font-size: .85rem; color: #445;
+      display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
+    }
+    .export-summary strong { font-size: 1rem; color: #1a3c6e; }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="3" y="3" width="18" height="18" rx="2"/>
+    <path d="M3 9h18M9 21V9"/>
+  </svg>
+  <h1>宏全三廠 調撥單辨識系統</h1>
+  <span class="version-badge">v1.0.0</span>
+</header>
+
+<div class="container">
+
+  <!-- Step 1: 上傳調撥單 -->
+  <div class="card">
+    <h2><span class="step-badge">1</span>上傳調撥單圖片</h2>
+
+    <div class="upload-zone" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*" onchange="onFileSelected(this)" />
+      <div id="upload-hint">
+        <div class="upload-icon">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <p>點擊或拖曳調撥單圖片到此處</p>
+        <p class="hint">支援 JPG、PNG、BMP</p>
+      </div>
+      <img id="preview-img" alt="預覽" />
+      <div class="upload-replace-overlay">替換圖片</div>
+    </div>
+
+    <div id="progress-wrap">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-bar"></div>
+      </div>
+      <div class="progress-steps">
+        <span class="progress-step" id="ps-upload">上傳圖片</span>
+        <span class="progress-step" id="ps-ocr">文字辨識</span>
+        <span class="progress-step" id="ps-parse">欄位解析</span>
+        <span class="progress-step" id="ps-done">完成</span>
+      </div>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-ocr" onclick="runOCR()" disabled>開始辨識</button>
+      <button class="btn btn-danger"  id="btn-clear" onclick="clearUpload()" disabled>清空</button>
+    </div>
+  </div>
+
+  <!-- Step 2: 確認辨識結果 -->
+  <div class="card" id="result-card" style="display:none">
+    <h2><span class="step-badge">2</span>確認辨識結果</h2>
+
+    <div class="meta-strip">
+      <div class="meta-item">
+        <label>交貨日期</label>
+        <input type="text" id="inp-date" placeholder="2026/05/04" />
+      </div>
+      <div class="meta-item">
+        <label>發貨儲位</label>
+        <input type="text" id="inp-warehouse" placeholder="0564" />
+      </div>
+      <div class="meta-item">
+        <label>裝運單號</label>
+        <input type="text" id="inp-shipment" placeholder="" />
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>品號</th>
+            <th style="text-align:right; padding-right:18px">數量（件）</th>
+          </tr>
+        </thead>
+        <tbody id="items-body"></tbody>
+      </table>
+    </div>
+
+    <div id="unmatched-section" style="display:none">
+      <div class="unmatched-box">
+        <strong>以下品號不在系統清單中，不會計入庫存表：</strong>
+        <div class="unmatched-list" id="unmatched-list"></div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="addToSession()">加入本批匯總</button>
+      <button class="btn btn-outline"  onclick="addItemRow()">＋ 新增品項</button>
+    </div>
+  </div>
+
+  <!-- Step 3: 批次匯總 & 匯出 -->
+  <div class="card" id="session-card">
+    <h2><span class="step-badge">3</span>批次匯總</h2>
+
+    <div id="session-list">
+      <div class="session-empty" id="session-empty">尚未加入任何調撥單，請先上傳並確認辨識結果。</div>
+    </div>
+
+    <div id="export-area" style="display:none">
+      <div class="export-summary">
+        <div>已匯入 <strong id="order-count">0</strong> 張調撥單</div>
+        <div id="total-qty-summary" style="color:#556"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="exportExcel()">匯出成品庫存 Excel</button>
+        <button class="btn btn-danger"  onclick="clearSession()">清除全部</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+    ? "http://localhost:8080"
+    : "https://aseptic-f3-api-65578120182.asia-east1.run.app";
+
+  const KNOWN_CODES = [
+    "RGT5F","RGM5F","RGG9B","RGG3B","RTT9B","RTT3B",
+    "RBZ9B","RBZ3B","RBZ5F","RCB9B","RCB3B","GAB5F",
+    "GBW5F","GB2M", "GLW5F","GL2M", "GCL5F","GCL2M",
+    "GHW5F","GHW2M","RYB5F","KMT5F",
+  ];
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let selectedFile  = null;
+  let session       = [];   // [{date, warehouse, items:[{code,qty}]}]
+  let pendingIndex  = null; // session index of last OCR result (for edit mode)
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  const dropZone = document.getElementById("drop-zone");
+  dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault(); dropZone.classList.remove("drag");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+
+  function onFileSelected(input) { if (input.files[0]) setFile(input.files[0]); }
+
+  function setFile(file) {
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById("preview-img");
+      img.src = e.target.result;
+      img.style.display = "block";
+      dropZone.classList.add("has-image");
+      document.getElementById("upload-hint").style.display = "none";
+    };
+    reader.readAsDataURL(file);
+    document.getElementById("btn-ocr").disabled   = false;
+    document.getElementById("btn-clear").disabled = false;
+    setStatus("", "");
+    hideProgress();
+  }
+
+  function clearUpload() {
+    selectedFile = null;
+    document.getElementById("file-input").value = "";
+    const img = document.getElementById("preview-img");
+    img.src = ""; img.style.display = "none";
+    dropZone.classList.remove("has-image");
+    document.getElementById("upload-hint").style.display = "";
+    document.getElementById("btn-ocr").disabled   = true;
+    document.getElementById("btn-clear").disabled = true;
+    document.getElementById("result-card").style.display = "none";
+    hideProgress();
+    setStatus("", "");
+  }
+
+  // ── Progress ─────────────────────────────────────────────────────────────
+  const STEPS = ["ps-upload","ps-ocr","ps-parse","ps-done"];
+  const PCTS  = [15, 50, 85, 100];
+
+  function showProgress() {
+    document.getElementById("progress-wrap").style.display = "block";
+    STEPS.forEach(id => document.getElementById(id).className = "progress-step");
+    setProgressBar(0);
+  }
+  function hideProgress() {
+    document.getElementById("progress-wrap").style.display = "none";
+  }
+  function setProgressStep(idx) {
+    STEPS.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.className = "progress-step" + (i < idx ? " done" : i === idx ? " active" : "");
+    });
+    setProgressBar(PCTS[idx] ?? 100);
+  }
+  function setProgressBar(pct) {
+    document.getElementById("progress-bar").style.width = pct + "%";
+  }
+
+  // ── OCR ──────────────────────────────────────────────────────────────────
+  async function runOCR() {
+    if (!selectedFile) return;
+    document.getElementById("btn-ocr").disabled = true;
+    document.getElementById("result-card").style.display = "none";
+    setStatus("", "");
+    showProgress();
+    setProgressStep(0);
+
+    const form = new FormData();
+    form.append("image", selectedFile);
+
+    let stepIdx = 1;
+    const ticker = setInterval(() => {
+      if (stepIdx < STEPS.length - 1) setProgressStep(stepIdx++);
+    }, 2800);
+
+    try {
+      const res = await fetch(`${API}/ocr`, { method: "POST", body: form });
+      clearInterval(ticker);
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`HTTP ${res.status}：${txt.slice(0, 160)}`);
+      }
+      const data = await res.json();
+      setProgressStep(3);
+      setTimeout(() => {
+        hideProgress();
+        fillResult(data);
+        setStatus("辨識完成，請確認後按「加入本批匯總」。", "ok");
+      }, 500);
+    } catch (err) {
+      clearInterval(ticker);
+      hideProgress();
+      setStatus("辨識失敗：" + err.message, "error");
+    } finally {
+      document.getElementById("btn-ocr").disabled = false;
+    }
+  }
+
+  function fillResult(data) {
+    pendingIndex = data.index ?? null;
+    document.getElementById("inp-date").value      = data.date      || "";
+    document.getElementById("inp-warehouse").value = data.warehouse || "";
+    document.getElementById("inp-shipment").value  = data.shipment_no || "";
+
+    const tbody = document.getElementById("items-body");
+    tbody.innerHTML = "";
+    (data.matched_items || []).forEach(item => appendItemRow(item.code, item.qty));
+
+    // Unmatched
+    const unmatched = data.unmatched_items || [];
+    const section   = document.getElementById("unmatched-section");
+    if (unmatched.length > 0) {
+      document.getElementById("unmatched-list").innerHTML = unmatched
+        .map(u => `${u.code}（${u.qty} 件）`)
+        .join("、");
+      section.style.display = "block";
+    } else {
+      section.style.display = "none";
+    }
+
+    document.getElementById("result-card").style.display = "block";
+    document.getElementById("result-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function appendItemRow(code = "", qty = "") {
+    const tbody = document.getElementById("items-body");
+    const tr    = document.createElement("tr");
+
+    const tdCode = document.createElement("td");
+    tdCode.className = "code";
+    const codeSelect = document.createElement("select");
+    codeSelect.style.cssText = "border:1px solid #ccc;border-radius:4px;padding:3px 6px;font-size:.85rem;font-family:Consolas,monospace;color:#cc0000;font-weight:700;width:130px";
+    KNOWN_CODES.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      if (c === code) opt.selected = true;
+      codeSelect.appendChild(opt);
+    });
+    tdCode.appendChild(codeSelect);
+
+    const tdQty = document.createElement("td");
+    tdQty.style.textAlign = "right";
+    const qtyInput = document.createElement("input");
+    qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.step = "1";
+    qtyInput.value = qty || "";
+    qtyInput.placeholder = "0";
+    tdQty.appendChild(qtyInput);
+
+    const tdDel = document.createElement("td");
+    tdDel.style.textAlign = "center";
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "刪除";
+    delBtn.className = "btn-icon";
+    delBtn.onclick = () => tr.remove();
+    tdDel.appendChild(delBtn);
+
+    tr.append(tdCode, tdQty, tdDel);
+    tbody.appendChild(tr);
+  }
+
+  function addItemRow() { appendItemRow(); }
+
+  // ── Session management ───────────────────────────────────────────────────
+  async function addToSession() {
+    const date      = document.getElementById("inp-date").value.trim();
+    const warehouse = document.getElementById("inp-warehouse").value.trim();
+
+    const items = [];
+    document.querySelectorAll("#items-body tr").forEach(tr => {
+      const code = tr.querySelector("select")?.value;
+      const qty  = parseInt(tr.querySelector("input[type=number]")?.value) || 0;
+      if (code && qty > 0) items.push({ code, qty });
+    });
+
+    if (!items.length) {
+      setStatus("沒有有效的品項數量，請先確認辨識結果。", "error");
+      return;
+    }
+
+    const entry = { date, warehouse, items };
+
+    // Sync with backend session
+    if (pendingIndex !== null) {
+      try {
+        await fetch(`${API}/session/${pendingIndex}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry),
+        });
+        session[pendingIndex] = entry;
+      } catch (_) {
+        // fallback to local-only
+        if (session.length <= pendingIndex) session.push(entry);
+        else session[pendingIndex] = entry;
+      }
+    } else {
+      session.push(entry);
+    }
+
+    pendingIndex = null;
+    renderSession();
+    document.getElementById("result-card").style.display = "none";
+    clearUpload();
+    document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });
+    setStatus("", "");
+  }
+
+  async function removeOrder(idx) {
+    try {
+      await fetch(`${API}/session/${idx}`, { method: "DELETE" });
+    } catch (_) {}
+    session.splice(idx, 1);
+    renderSession();
+  }
+
+  async function clearSession() {
+    if (!confirm("確定要清除所有調撥單資料嗎？")) return;
+    try { await fetch(`${API}/session`, { method: "DELETE" }); } catch (_) {}
+    session = [];
+    renderSession();
+  }
+
+  function renderSession() {
+    const list  = document.getElementById("session-list");
+    const empty = document.getElementById("session-empty");
+    const exportArea = document.getElementById("export-area");
+
+    // Remove existing order cards
+    list.querySelectorAll(".order-card").forEach(el => el.remove());
+
+    if (session.length === 0) {
+      empty.style.display = "block";
+      exportArea.style.display = "none";
+      return;
+    }
+
+    empty.style.display = "none";
+    exportArea.style.display = "block";
+    document.getElementById("order-count").textContent = session.length;
+
+    // Total qty summary
+    const totals = {};
+    session.forEach(entry => {
+      entry.items.forEach(({ code, qty }) => {
+        totals[code] = (totals[code] || 0) + qty;
+      });
+    });
+    const topItems = Object.entries(totals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([c, q]) => `${c}: ${q.toLocaleString()}`)
+      .join("　");
+    document.getElementById("total-qty-summary").textContent = topItems ? `前五大品項：${topItems}` : "";
+
+    // Render each order card
+    session.forEach((entry, idx) => {
+      const card = document.createElement("div");
+      card.className = "order-card";
+
+      const numEl = document.createElement("div");
+      numEl.className = "order-num";
+      numEl.textContent = `#${idx + 1}`;
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "order-meta";
+
+      const metaRow = document.createElement("div");
+      metaRow.className = "order-meta-row";
+      metaRow.innerHTML =
+        `<span>日期：<strong>${entry.date || "—"}</strong></span>` +
+        `<span>儲位：<strong>${entry.warehouse || "—"}</strong></span>` +
+        `<span>${entry.items.length} 個品項</span>`;
+
+      const itemsEl = document.createElement("div");
+      itemsEl.className = "order-items";
+      entry.items.forEach(({ code, qty }) => {
+        const chip = document.createElement("span");
+        chip.className = "item-chip";
+        chip.innerHTML = `${code} <span class="qty">${qty.toLocaleString()}</span>`;
+        itemsEl.appendChild(chip);
+      });
+
+      metaEl.append(metaRow, itemsEl);
+
+      const actions = document.createElement("div");
+      actions.className = "order-actions";
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn-icon";
+      delBtn.textContent = "移除";
+      delBtn.onclick = () => removeOrder(idx);
+      actions.appendChild(delBtn);
+
+      card.append(numEl, metaEl, actions);
+      list.appendChild(card);
+    });
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  async function exportExcel() {
+    if (!session.length) return;
+    setStatus("匯出中…", "ok");
+    try {
+      const res = await fetch(`${API}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: session }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      a.download = `宏全三廠_成品庫存_${today}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("匯出成功！", "ok");
+    } catch (err) {
+      setStatus("匯出失敗：" + err.message, "error");
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(msg, type) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className   = type || "";
+    el.style.display = msg ? "block" : "none";
+  }
+
+  // Init
+  renderSession();
+</script>
+</body>
+</html>
