@@ -36,10 +36,14 @@ def parse_transfer_order(image_path: str) -> dict:
     items     = _extract_items(response)
     rows      = _group_by_y(items, tol=15)
 
+    receiving_loc  = _extract_receiving_location(full_text)
+    shipment_no    = _extract_shipment_no(full_text)
+    warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
+
     result = {
         "date":         _extract_date(full_text),
-        "warehouse":    _extract_warehouse(full_text),
-        "shipment_no":  _extract_shipment_no(full_text),
+        "warehouse":    warehouse_label,
+        "shipment_no":  shipment_no,
         "matched_items":   [],
         "unmatched_items": [],
     }
@@ -64,10 +68,10 @@ def _extract_date(text: str) -> str:
             return m.group(1)
     return ""
 
-def _extract_warehouse(text: str) -> str:
-    # 取發貨儲位編號（如 1412）
-    m = re.search(r'發貨儲位[：:\s]*(\d+)', text)
-    return m.group(1) if m else ""
+def _extract_receiving_location(text: str) -> str:
+    # 收貨儲位：1108 北區供貨倉庫 → 取名稱部分
+    m = re.search(r'收貨儲位[：:\s]*\d+\s+(.+?)(?:\s{2,}|\t|\n|$)', text)
+    return m.group(1).strip() if m else ""
 
 def _extract_shipment_no(text: str) -> str:
     m = re.search(r'裝運單號[：:\s]*(\d+)', text)
@@ -78,7 +82,7 @@ def _extract_shipment_no(text: str) -> str:
 
 def _parse_table(rows: list, full_text: str) -> list:
     # 找表格標題列（含「序號」「品號」「數量」）
-    header_idx, qty_x = _find_header(rows)
+    header_idx, qty_x, pallets_x = _find_header(rows)
     if header_idx == -1:
         return _fallback_parse(full_text)
 
@@ -94,22 +98,26 @@ def _parse_table(rows: list, full_text: str) -> list:
         if not code:
             continue
 
-        qty = _extract_qty(row, qty_x)
-        result.append({"code": code, "qty": qty})
+        qty     = _extract_qty(row, qty_x)
+        pallets = _extract_pallets(row, pallets_x)
+        result.append({"code": code, "qty": qty, "pallets": pallets})
 
     return result
 
 
 def _find_header(rows: list):
-    """回傳 (header列index, 數量欄X座標)"""
+    """回傳 (header列index, 數量欄X座標, 棧板欄X座標)"""
     for i, row in enumerate(rows):
         text = "".join(item["text"] for item in row)
         if "序號" in text and ("品號" in text or "數量" in text):
             qty_x = next(
                 (item["x"] for item in row if "數量" in item["text"]), None
             )
-            return i, qty_x
-    return -1, None
+            pallets_x = next(
+                (item["x"] for item in row if "棧板" in item["text"]), None
+            )
+            return i, qty_x, pallets_x
+    return -1, None, None
 
 
 def _extract_code(row_items: list) -> str:
@@ -149,6 +157,22 @@ def _extract_qty(row_items: list, qty_x) -> int:
 
     # 無座標基準時取最大值（數量通常最大）
     return max(c[1] for c in candidates)
+
+
+def _extract_pallets(row_items: list, pallets_x) -> int:
+    """從一列中擷取棧板數（X 座標最接近 pallets_x 的正整數）"""
+    if pallets_x is None:
+        return 0
+    candidates = []
+    for item in row_items:
+        clean = item["text"].replace(",", "").strip()
+        if re.match(r'^\d+$', clean):
+            n = int(clean)
+            if 1 <= n <= 999:
+                candidates.append((item["x"], n))
+    if not candidates:
+        return 0
+    return min(candidates, key=lambda c: abs(c[0] - pallets_x))[1]
 
 
 # ── 降級解析（無法定位表格標題時）────────────────────────

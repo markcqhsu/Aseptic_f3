@@ -40,6 +40,7 @@
       padding: 20px 24px;
       margin-bottom: 20px;
     }
+    #session-card { max-width: 100%; }
     .card h2 {
       font-size: .95rem;
       font-weight: 700;
@@ -71,15 +72,8 @@
       overflow: hidden;
     }
     .upload-zone:not(.has-image):hover,
-    .upload-zone.drag {
-      background: #eef2ff;
-      border-color: #4a6fa5;
-    }
-    .upload-zone.has-image {
-      padding: 0;
-      border-style: solid;
-      border-color: #c8d4e8;
-    }
+    .upload-zone.drag { background: #eef2ff; border-color: #4a6fa5; }
+    .upload-zone.has-image { padding: 0; border-style: solid; border-color: #c8d4e8; }
     .upload-zone input[type=file] {
       position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2;
     }
@@ -88,21 +82,16 @@
     .upload-zone .hint { font-size: .78rem; color: #aaa; margin-top: 4px; }
     #preview-img {
       width: 100%; max-height: 380px;
-      object-fit: contain;
-      border-radius: 8px;
-      display: none;
-      vertical-align: top;
+      object-fit: contain; border-radius: 8px;
+      display: none; vertical-align: top;
     }
     .upload-replace-overlay {
       display: none;
       position: absolute; inset: 0; z-index: 1;
-      background: rgba(0,0,0,.45);
-      color: #fff;
+      background: rgba(0,0,0,.45); color: #fff;
       font-size: 1rem; font-weight: 600;
       align-items: center; justify-content: center;
-      gap: 8px;
-      border-radius: 8px;
-      pointer-events: none;
+      border-radius: 8px; pointer-events: none;
     }
     .upload-zone.has-image:hover .upload-replace-overlay { display: flex; }
 
@@ -142,8 +131,7 @@
 
     /* ── Buttons ── */
     .btn {
-      padding: 9px 22px;
-      border: none; border-radius: 7px;
+      padding: 9px 22px; border: none; border-radius: 7px;
       font-size: .9rem; font-weight: 600;
       cursor: pointer; transition: opacity .15s;
     }
@@ -155,6 +143,14 @@
     .btn-danger  { background: #fff; color: #b00; border: 1.5px solid #b00; }
     .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 
+    .btn-icon {
+      background: none; border: 1px solid #ccc;
+      border-radius: 5px; padding: 3px 9px;
+      cursor: pointer; font-size: .78rem; color: #667;
+      transition: all .15s; line-height: 1.4;
+    }
+    .btn-icon:hover { background: #fce8e8; border-color: #b00; color: #b00; }
+
     /* ── Meta strip ── */
     .meta-strip {
       display: flex; flex-wrap: wrap; gap: 16px;
@@ -164,35 +160,31 @@
     .meta-item label { font-weight: 600; color: #556; margin-right: 4px; }
     .meta-item input {
       border: 1px solid #ccc; border-radius: 5px;
-      padding: 3px 8px; font-size: .85rem; width: 130px;
+      padding: 3px 8px; font-size: .85rem; width: 160px;
     }
 
-    /* ── OCR result table ── */
+    /* ── OCR result items table (Step 2) ── */
     .table-wrap { overflow-x: auto; }
-    .items-table {
-      border-collapse: collapse;
-      width: 100%;
-      font-size: .85rem;
-    }
+    .items-table { border-collapse: collapse; width: 100%; font-size: .85rem; }
     .items-table th {
       background: #1a3c6e; color: #fff;
       padding: 8px 12px; text-align: left;
       font-weight: 600; white-space: nowrap;
     }
-    .items-table td {
-      border: 1px solid #dde;
-      padding: 5px 10px;
-      vertical-align: middle;
-    }
+    .items-table td { border: 1px solid #dde; padding: 5px 10px; vertical-align: middle; }
     .items-table tr:nth-child(even) td { background: #f8f9fc; }
     .items-table tr:hover td { background: #eef2ff; }
     .items-table td.code { font-family: Consolas, monospace; font-weight: 700; color: #cc0000; }
-    .items-table td input {
+    .items-table td input[type=number] {
       border: 1px solid #ccc; border-radius: 4px;
       padding: 3px 8px; width: 90px;
       font-size: .85rem; text-align: right;
     }
     .items-table td input:focus { outline: 2px solid #4a6fa5; border-color: transparent; }
+    .items-table td.pallets-ref {
+      text-align: center; color: #1a3c6e; font-weight: 700;
+      font-family: Consolas, monospace;
+    }
 
     /* ── Unmatched warning ── */
     .unmatched-box {
@@ -203,53 +195,110 @@
     .unmatched-box strong { color: #7a5500; }
     .unmatched-list { margin-top: 4px; color: #7a5500; }
 
-    /* ── Session list ── */
+    /* ── Full preview table (Step 3) ── */
     .session-empty {
       text-align: center; color: #aaa;
-      padding: 24px; font-size: .9rem;
+      padding: 32px; font-size: .9rem;
     }
-    .order-card {
-      border: 1px solid #dde; border-radius: 8px;
-      padding: 12px 16px; margin-bottom: 10px;
-      display: flex; align-items: flex-start; gap: 14px;
-    }
-    .order-card:last-child { margin-bottom: 0; }
-    .order-num {
-      background: #1a3c6e; color: #fff;
-      border-radius: 6px; padding: 2px 10px;
-      font-size: .8rem; font-weight: 700;
-      white-space: nowrap; flex-shrink: 0;
-      align-self: center;
-    }
-    .order-meta { flex: 1; min-width: 0; }
-    .order-meta-row {
-      font-size: .83rem; color: #556;
-      display: flex; flex-wrap: wrap; gap: 12px;
-      margin-bottom: 6px;
-    }
-    .order-meta-row span strong { color: #222; }
-    .order-items {
-      display: flex; flex-wrap: wrap; gap: 6px;
-    }
-    .item-chip {
-      background: #eef2ff; border: 1px solid #c5cfe8;
-      border-radius: 5px; padding: 2px 9px;
-      font-size: .78rem; font-family: Consolas, monospace;
-    }
-    .item-chip .qty { color: #1a3c6e; font-weight: 700; }
-    .order-actions { display: flex; gap: 8px; flex-shrink: 0; align-self: center; }
-    .btn-icon {
-      background: none; border: 1px solid #ccc;
-      border-radius: 6px; padding: 4px 10px;
-      cursor: pointer; font-size: .8rem; color: #556;
-      transition: all .15s;
-    }
-    .btn-icon:hover { background: #fce8e8; border-color: #b00; color: #b00; }
 
-    /* ── Export section ── */
+    .full-table-outer {
+      overflow-x: auto;
+      border: 1px solid #d0d6e8;
+      border-radius: 8px;
+      margin-bottom: 4px;
+    }
+    .preview-table {
+      border-collapse: collapse;
+      font-size: .78rem;
+      white-space: nowrap;
+      width: max-content;
+      min-width: 100%;
+    }
+    .preview-table th {
+      background: #1a3c6e; color: #fff;
+      padding: 6px 4px;
+      text-align: center;
+      font-weight: 600;
+      white-space: pre-line;
+      line-height: 1.3;
+      font-family: Consolas, monospace;
+      font-size: .72rem;
+      border: 1px solid #2d5a9e;
+    }
+    .preview-table th.th-meta {
+      font-family: inherit; font-size: .78rem;
+    }
+    .preview-table td {
+      border: 1px solid #e0e4ee;
+      padding: 1px 2px;
+      vertical-align: middle;
+    }
+    /* Sticky columns */
+    .preview-table th.col-date,
+    .preview-table td.col-date {
+      position: sticky; left: 0; z-index: 3;
+      min-width: 100px; max-width: 100px; width: 100px;
+    }
+    .preview-table th.col-remark,
+    .preview-table td.col-remark {
+      position: sticky; left: 100px; z-index: 3;
+      min-width: 155px; max-width: 155px; width: 155px;
+    }
+    .preview-table th.col-date,
+    .preview-table th.col-remark { background: #1a3c6e; }
+    .preview-table td.col-date,
+    .preview-table td.col-remark { background: #fff; }
+
+    .preview-table .col-product { min-width: 54px; max-width: 54px; width: 54px; }
+    .preview-table .col-pallet  { min-width: 52px; max-width: 52px; width: 52px; }
+    .preview-table .col-action  { min-width: 44px; max-width: 44px; width: 44px; text-align: center; }
+
+    /* Product code header in red */
+    .preview-table th.col-product { color: #ffcdd2; }
+
+    /* Cell inputs */
+    .preview-table td input {
+      border: none; outline: none; background: transparent;
+      width: 100%; text-align: center;
+      font-family: Consolas, monospace; font-size: .78rem;
+      padding: 3px 2px;
+    }
+    .preview-table td input:focus { background: #fffde7; }
+    .preview-table td.meta-cell input {
+      text-align: left; font-family: inherit; font-size: .78rem; padding: 3px 6px;
+    }
+
+    /* Pallet calculated cell */
+    .preview-table td.pallet-cell {
+      background: #eef2ff; color: #1a3c6e;
+      font-weight: 700; text-align: center;
+      font-family: Consolas, monospace;
+    }
+    .preview-table th.col-pallet { background: #2d4fa0; }
+
+    /* Total row */
+    .preview-table tfoot td {
+      background: #fffacd; font-weight: 700;
+      text-align: center; border-top: 2px solid #b8a030;
+      font-family: Consolas, monospace; font-size: .78rem;
+      padding: 4px 2px;
+    }
+    .preview-table tfoot td.col-date,
+    .preview-table tfoot td.col-remark {
+      background: #fffacd; text-align: center; font-family: inherit;
+    }
+    .preview-table tfoot td.pallet-cell { background: #e8eeff; }
+
+    /* Row hover */
+    .preview-table tbody tr:hover td { background: #f4f7ff; }
+    .preview-table tbody tr:hover td.col-date,
+    .preview-table tbody tr:hover td.col-remark { background: #f4f7ff; }
+    .preview-table tbody tr:hover td.pallet-cell { background: #dde6ff; }
+
+    /* ── Export summary ── */
     .export-summary {
       background: #f5f7fa; border-radius: 8px;
-      padding: 12px 16px; margin-bottom: 14px;
+      padding: 10px 16px; margin-bottom: 14px; margin-top: 14px;
       font-size: .85rem; color: #445;
       display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
     }
@@ -264,7 +313,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.0.0</span>
+  <span class="version-badge">v1.1.0</span>
 </header>
 
 <div class="container">
@@ -317,15 +366,15 @@
     <div class="meta-strip">
       <div class="meta-item">
         <label>交貨日期</label>
-        <input type="text" id="inp-date" placeholder="2026/05/04" />
+        <input type="text" id="inp-date" placeholder="2026/05/05" />
       </div>
       <div class="meta-item">
-        <label>發貨儲位</label>
-        <input type="text" id="inp-warehouse" placeholder="0564" />
+        <label>所別/備註</label>
+        <input type="text" id="inp-warehouse" placeholder="北區供貨倉庫 938374" style="width:210px" />
       </div>
       <div class="meta-item">
         <label>裝運單號</label>
-        <input type="text" id="inp-shipment" placeholder="" />
+        <input type="text" id="inp-shipment" placeholder="" style="width:110px" />
       </div>
     </div>
 
@@ -335,6 +384,8 @@
           <tr>
             <th>品號</th>
             <th style="text-align:right; padding-right:18px">數量（件）</th>
+            <th style="text-align:center">調撥棧板</th>
+            <th style="width:54px"></th>
           </tr>
         </thead>
         <tbody id="items-body"></tbody>
@@ -354,18 +405,24 @@
     </div>
   </div>
 
-  <!-- Step 3: 批次匯總 & 匯出 -->
-  <div class="card" id="session-card">
-    <h2><span class="step-badge">3</span>批次匯總</h2>
+  <!-- Step 3: 批次匯總預覽 -->
+  <div class="card" id="session-card" style="max-width:none; width:100%">
+    <h2><span class="step-badge">3</span>批次匯總預覽</h2>
 
-    <div id="session-list">
-      <div class="session-empty" id="session-empty">尚未加入任何調撥單，請先上傳並確認辨識結果。</div>
+    <div class="session-empty" id="session-empty">尚未加入任何調撥單，請先上傳並確認辨識結果。</div>
+
+    <div class="full-table-outer" id="full-table-outer" style="display:none">
+      <table class="preview-table" id="preview-table">
+        <thead id="preview-thead"></thead>
+        <tbody id="preview-body"></tbody>
+        <tfoot id="preview-tfoot"></tfoot>
+      </table>
     </div>
 
     <div id="export-area" style="display:none">
       <div class="export-summary">
         <div>已匯入 <strong id="order-count">0</strong> 張調撥單</div>
-        <div id="total-qty-summary" style="color:#556"></div>
+        <div id="total-qty-summary" style="color:#778; font-size:.82rem"></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-success" onclick="exportExcel()">匯出成品庫存 Excel</button>
@@ -388,10 +445,24 @@
     "GHW5F","GHW2M","RYB5F","KMT5F",
   ];
 
+  const PRODUCT_HDR = {
+    "RGT5F":"RGT5F\n350ml", "RGM5F":"RGM5F\n500ml",
+    "RGG9B":"RGG9B\n2000ml","RGG3B":"RGG3B\n600ml",
+    "RTT9B":"RTT9B\n2000ml","RTT3B":"RTT3B\n600ml",
+    "RBZ9B":"RBZ9B\n2000ml","RBZ3B":"RBZ3B\n600ml",
+    "RBZ5F":"RBZ5F\n350ml", "RCB9B":"RCB9B\n2000ml",
+    "RCB3B":"RCB3B\n600ml", "GAB5F":"GAB5F\n350ml",
+    "GBW5F":"GBW5F\n350ml", "GB2M" :"GB2M\n2000ml",
+    "GLW5F":"GLW5F\n350ml", "GL2M" :"GL2M\n2000ml",
+    "GCL5F":"GCL5F\n350ml", "GCL2M":"GCL2M\n2000ml",
+    "GHW5F":"GHW5F\n350ml", "GHW2M":"GHW2M\n2000ml",
+    "RYB5F":"RYB5F\n350ml", "KMT5F":"KMT5F\n350ml",
+  };
+
   // ── State ────────────────────────────────────────────────────────────────
-  let selectedFile  = null;
-  let session       = [];   // [{date, warehouse, items:[{code,qty}]}]
-  let pendingIndex  = null; // session index of last OCR result (for edit mode)
+  let selectedFile = null;
+  let session      = [];   // [{date, warehouse, items:[{code,qty}]}]
+  let pendingIndex = null;
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
   const dropZone = document.getElementById("drop-zone");
@@ -409,8 +480,7 @@
     const reader = new FileReader();
     reader.onload = e => {
       const img = document.getElementById("preview-img");
-      img.src = e.target.result;
-      img.style.display = "block";
+      img.src = e.target.result; img.style.display = "block";
       dropZone.classList.add("has-image");
       document.getElementById("upload-hint").style.display = "none";
     };
@@ -444,9 +514,7 @@
     STEPS.forEach(id => document.getElementById(id).className = "progress-step");
     setProgressBar(0);
   }
-  function hideProgress() {
-    document.getElementById("progress-wrap").style.display = "none";
-  }
+  function hideProgress() { document.getElementById("progress-wrap").style.display = "none"; }
   function setProgressStep(idx) {
     STEPS.forEach((id, i) => {
       const el = document.getElementById(id);
@@ -454,9 +522,7 @@
     });
     setProgressBar(PCTS[idx] ?? 100);
   }
-  function setProgressBar(pct) {
-    document.getElementById("progress-bar").style.width = pct + "%";
-  }
+  function setProgressBar(pct) { document.getElementById("progress-bar").style.width = pct + "%"; }
 
   // ── OCR ──────────────────────────────────────────────────────────────────
   async function runOCR() {
@@ -464,8 +530,7 @@
     document.getElementById("btn-ocr").disabled = true;
     document.getElementById("result-card").style.display = "none";
     setStatus("", "");
-    showProgress();
-    setProgressStep(0);
+    showProgress(); setProgressStep(0);
 
     const form = new FormData();
     form.append("image", selectedFile);
@@ -506,15 +571,13 @@
 
     const tbody = document.getElementById("items-body");
     tbody.innerHTML = "";
-    (data.matched_items || []).forEach(item => appendItemRow(item.code, item.qty));
+    (data.matched_items || []).forEach(item => appendItemRow(item.code, item.qty, item.pallets));
 
-    // Unmatched
     const unmatched = data.unmatched_items || [];
     const section   = document.getElementById("unmatched-section");
     if (unmatched.length > 0) {
-      document.getElementById("unmatched-list").innerHTML = unmatched
-        .map(u => `${u.code}（${u.qty} 件）`)
-        .join("、");
+      document.getElementById("unmatched-list").innerHTML =
+        unmatched.map(u => `${u.code}（${u.qty} 件 / ${u.pallets || 0} 板）`).join("、");
       section.style.display = "block";
     } else {
       section.style.display = "none";
@@ -524,39 +587,45 @@
     document.getElementById("result-card").scrollIntoView({ behavior: "smooth" });
   }
 
-  function appendItemRow(code = "", qty = "") {
+  function appendItemRow(code = "", qty = "", pallets = 0) {
     const tbody = document.getElementById("items-body");
     const tr    = document.createElement("tr");
 
+    // 品號 select
     const tdCode = document.createElement("td");
     tdCode.className = "code";
-    const codeSelect = document.createElement("select");
-    codeSelect.style.cssText = "border:1px solid #ccc;border-radius:4px;padding:3px 6px;font-size:.85rem;font-family:Consolas,monospace;color:#cc0000;font-weight:700;width:130px";
+    const sel = document.createElement("select");
+    sel.style.cssText = "border:1px solid #ccc;border-radius:4px;padding:3px 6px;font-size:.85rem;font-family:Consolas,monospace;color:#cc0000;font-weight:700;width:130px";
     KNOWN_CODES.forEach(c => {
       const opt = document.createElement("option");
       opt.value = c; opt.textContent = c;
       if (c === code) opt.selected = true;
-      codeSelect.appendChild(opt);
+      sel.appendChild(opt);
     });
-    tdCode.appendChild(codeSelect);
+    tdCode.appendChild(sel);
 
+    // 數量
     const tdQty = document.createElement("td");
     tdQty.style.textAlign = "right";
-    const qtyInput = document.createElement("input");
-    qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.step = "1";
-    qtyInput.value = qty || "";
-    qtyInput.placeholder = "0";
-    tdQty.appendChild(qtyInput);
+    const qtyInp = document.createElement("input");
+    qtyInp.type = "number"; qtyInp.min = "0"; qtyInp.step = "1";
+    qtyInp.value = qty || ""; qtyInp.placeholder = "0";
+    tdQty.appendChild(qtyInp);
 
+    // 調撥棧板（OCR 讀到的原始值，僅供參考）
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallets-ref";
+    tdPal.textContent = pallets > 0 ? pallets : "—";
+
+    // 刪除
     const tdDel = document.createElement("td");
     tdDel.style.textAlign = "center";
     const delBtn = document.createElement("button");
-    delBtn.textContent = "刪除";
-    delBtn.className = "btn-icon";
+    delBtn.textContent = "刪除"; delBtn.className = "btn-icon";
     delBtn.onclick = () => tr.remove();
     tdDel.appendChild(delBtn);
 
-    tr.append(tdCode, tdQty, tdDel);
+    tr.append(tdCode, tdQty, tdPal, tdDel);
     tbody.appendChild(tr);
   }
 
@@ -581,7 +650,6 @@
 
     const entry = { date, warehouse, items };
 
-    // Sync with backend session
     if (pendingIndex !== null) {
       try {
         await fetch(`${API}/session/${pendingIndex}`, {
@@ -591,7 +659,6 @@
         });
         session[pendingIndex] = entry;
       } catch (_) {
-        // fallback to local-only
         if (session.length <= pendingIndex) session.push(entry);
         else session[pendingIndex] = entry;
       }
@@ -608,9 +675,7 @@
   }
 
   async function removeOrder(idx) {
-    try {
-      await fetch(`${API}/session/${idx}`, { method: "DELETE" });
-    } catch (_) {}
+    try { await fetch(`${API}/session/${idx}`, { method: "DELETE" }); } catch (_) {}
     session.splice(idx, 1);
     renderSession();
   }
@@ -622,79 +687,192 @@
     renderSession();
   }
 
-  function renderSession() {
-    const list  = document.getElementById("session-list");
-    const empty = document.getElementById("session-empty");
-    const exportArea = document.getElementById("export-area");
+  // ── Pallet formula (mirrors form_template.py) ────────────────────────────
+  function calcPallets(qtyByCode) {
+    let sum80 = 0, sum60 = 0;
+    KNOWN_CODES.forEach(code => {
+      const q = parseInt(qtyByCode[code]) || 0;
+      if (code.endsWith("5F") || code.endsWith("2M")) sum80 += q;
+      else if (code.endsWith("9B") || code.endsWith("3B")) sum60 += q;
+    });
+    return Math.floor(sum80 / 80 + sum60 / 60);
+  }
 
-    // Remove existing order cards
-    list.querySelectorAll(".order-card").forEach(el => el.remove());
+  // ── Full preview table rendering ─────────────────────────────────────────
+  function renderSession() {
+    const empty     = document.getElementById("session-empty");
+    const tableOuter= document.getElementById("full-table-outer");
+    const exportArea= document.getElementById("export-area");
 
     if (session.length === 0) {
-      empty.style.display = "block";
+      empty.style.display      = "block";
+      tableOuter.style.display = "none";
       exportArea.style.display = "none";
       return;
     }
 
-    empty.style.display = "none";
+    empty.style.display      = "none";
+    tableOuter.style.display = "block";
     exportArea.style.display = "block";
-    document.getElementById("order-count").textContent = session.length;
 
-    // Total qty summary
+    _buildTableHead();
+    _buildTableBody();
+    _buildTableFoot();
+    _updateExportSummary();
+  }
+
+  function _buildTableHead() {
+    const thead = document.getElementById("preview-thead");
+    thead.innerHTML = "";
+    const tr = document.createElement("tr");
+
+    const thDate = _th("日期", "th-meta col-date"); thDate.style.textAlign = "center";
+    const thRem  = _th("所別/備註", "th-meta col-remark"); thRem.style.textAlign = "center";
+    tr.append(thDate, thRem);
+
+    KNOWN_CODES.forEach(code => tr.appendChild(_th(PRODUCT_HDR[code], "col-product")));
+    tr.appendChild(_th("棧板", "th-meta col-pallet"));
+
+    const thAct = _th("", "col-action");
+    tr.appendChild(thAct);
+    thead.appendChild(tr);
+  }
+
+  function _buildTableBody() {
+    const tbody = document.getElementById("preview-body");
+    tbody.innerHTML = "";
+    session.forEach((entry, idx) => tbody.appendChild(_buildRow(entry, idx)));
+  }
+
+  function _buildTableFoot() {
+    const tfoot = document.getElementById("preview-tfoot");
+    tfoot.innerHTML = "";
+    const tr = document.createElement("tr");
+
+    const tdLabel = document.createElement("td");
+    tdLabel.colSpan = 2; tdLabel.textContent = "合計";
+    tdLabel.className = "col-date"; tdLabel.style.textAlign = "center";
+    tdLabel.style.fontFamily = "inherit";
+    tr.appendChild(tdLabel);
+
+    const totals = _calcTotals();
+    KNOWN_CODES.forEach(code => {
+      const td = document.createElement("td");
+      td.textContent = totals[code] || "";
+      td.style.textAlign = "center";
+      tr.appendChild(td);
+    });
+
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallet-cell";
+    tdPal.textContent = calcPallets(totals) || "";
+    tr.appendChild(tdPal);
+
+    tr.appendChild(document.createElement("td")); // action placeholder
+    tfoot.appendChild(tr);
+  }
+
+  function _buildRow(entry, idx) {
+    const tr = document.createElement("tr");
+
+    // 日期
+    const tdDate = document.createElement("td");
+    tdDate.className = "col-date meta-cell";
+    const dateInp = document.createElement("input");
+    dateInp.type = "text"; dateInp.value = entry.date || "";
+    dateInp.onchange = () => { session[idx].date = dateInp.value; _updateExportSummary(); };
+    tdDate.appendChild(dateInp);
+
+    // 所別/備註
+    const tdRem = document.createElement("td");
+    tdRem.className = "col-remark meta-cell";
+    const remInp = document.createElement("input");
+    remInp.type = "text"; remInp.value = entry.warehouse || "";
+    remInp.onchange = () => { session[idx].warehouse = remInp.value; };
+    tdRem.appendChild(remInp);
+
+    tr.append(tdDate, tdRem);
+
+    // 品項數量
+    const qtyMap = {};
+    (entry.items || []).forEach(i => { qtyMap[i.code] = i.qty; });
+
+    KNOWN_CODES.forEach(code => {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.min = "0"; inp.step = "1";
+      inp.value = qtyMap[code] || "";
+      inp.oninput = () => {
+        const q = parseInt(inp.value) || 0;
+        const iIdx = session[idx].items.findIndex(i => i.code === code);
+        if (q > 0) {
+          if (iIdx >= 0) session[idx].items[iIdx].qty = q;
+          else session[idx].items.push({ code, qty: q });
+        } else {
+          if (iIdx >= 0) session[idx].items.splice(iIdx, 1);
+        }
+        // refresh pallet for this row
+        const currentQty = {};
+        session[idx].items.forEach(i => { currentQty[i.code] = i.qty; });
+        const palCell = tr.querySelector(".pallet-cell");
+        if (palCell) palCell.textContent = calcPallets(currentQty) || "";
+        _buildTableFoot();
+        _updateExportSummary();
+      };
+      inp.onfocus = () => inp.style.background = "#fffde7";
+      inp.onblur  = () => inp.style.background = "transparent";
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+
+    // 棧板（計算值）
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallet-cell";
+    tdPal.textContent = calcPallets(qtyMap) || "";
+    tr.appendChild(tdPal);
+
+    // 刪除
+    const tdAct = document.createElement("td");
+    tdAct.className = "col-action";
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "✕"; delBtn.className = "btn-icon";
+    delBtn.style.padding = "2px 7px";
+    delBtn.onclick = () => removeOrder(idx);
+    tdAct.appendChild(delBtn);
+    tr.appendChild(tdAct);
+
+    return tr;
+  }
+
+  function _calcTotals() {
     const totals = {};
+    KNOWN_CODES.forEach(c => { totals[c] = 0; });
     session.forEach(entry => {
-      entry.items.forEach(({ code, qty }) => {
-        totals[code] = (totals[code] || 0) + qty;
+      (entry.items || []).forEach(({ code, qty }) => {
+        if (totals.hasOwnProperty(code)) totals[code] += qty;
       });
     });
-    const topItems = Object.entries(totals)
+    return totals;
+  }
+
+  function _updateExportSummary() {
+    document.getElementById("order-count").textContent = session.length;
+    const totals = _calcTotals();
+    const top5 = Object.entries(totals)
+      .filter(([, q]) => q > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([c, q]) => `${c}: ${q.toLocaleString()}`)
       .join("　");
-    document.getElementById("total-qty-summary").textContent = topItems ? `前五大品項：${topItems}` : "";
+    document.getElementById("total-qty-summary").textContent =
+      top5 ? `前五大品項：${top5}` : "";
+  }
 
-    // Render each order card
-    session.forEach((entry, idx) => {
-      const card = document.createElement("div");
-      card.className = "order-card";
-
-      const numEl = document.createElement("div");
-      numEl.className = "order-num";
-      numEl.textContent = `#${idx + 1}`;
-
-      const metaEl = document.createElement("div");
-      metaEl.className = "order-meta";
-
-      const metaRow = document.createElement("div");
-      metaRow.className = "order-meta-row";
-      metaRow.innerHTML =
-        `<span>日期：<strong>${entry.date || "—"}</strong></span>` +
-        `<span>儲位：<strong>${entry.warehouse || "—"}</strong></span>` +
-        `<span>${entry.items.length} 個品項</span>`;
-
-      const itemsEl = document.createElement("div");
-      itemsEl.className = "order-items";
-      entry.items.forEach(({ code, qty }) => {
-        const chip = document.createElement("span");
-        chip.className = "item-chip";
-        chip.innerHTML = `${code} <span class="qty">${qty.toLocaleString()}</span>`;
-        itemsEl.appendChild(chip);
-      });
-
-      metaEl.append(metaRow, itemsEl);
-
-      const actions = document.createElement("div");
-      actions.className = "order-actions";
-      const delBtn = document.createElement("button");
-      delBtn.className = "btn-icon";
-      delBtn.textContent = "移除";
-      delBtn.onclick = () => removeOrder(idx);
-      actions.appendChild(delBtn);
-
-      card.append(numEl, metaEl, actions);
-      list.appendChild(card);
-    });
+  function _th(text, cls) {
+    const th = document.createElement("th");
+    th.textContent = text;
+    if (cls) th.className = cls;
+    return th;
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -713,7 +891,7 @@
       const a    = document.createElement("a");
       a.href     = url;
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      a.download = `宏全三廠_成品庫存_${today}.xlsx`;
+      a.download  = `宏全三廠_成品庫存_${today}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setStatus("匯出成功！", "ok");
