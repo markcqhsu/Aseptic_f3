@@ -125,7 +125,7 @@ def build_workbook(rows: list) -> bytes:
 
 def _setup_columns(ws):
     ws.column_dimensions[get_column_letter(COL_DATE)].width    = 11
-    ws.column_dimensions[get_column_letter(COL_REMARK)].width  = 10
+    ws.column_dimensions[get_column_letter(COL_REMARK)].width  = 24
     for col in range(COL_FIRST, COL_LAST + 1):
         ws.column_dimensions[get_column_letter(col)].width = 7
     ws.column_dimensions[get_column_letter(COL_PAL_540)].width  = 7
