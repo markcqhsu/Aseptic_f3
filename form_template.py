@@ -125,7 +125,7 @@ def build_workbook(rows: list) -> bytes:
 
 def _setup_columns(ws):
     ws.column_dimensions[get_column_letter(COL_DATE)].width    = 11
-    ws.column_dimensions[get_column_letter(COL_REMARK)].width  = 24
+    ws.column_dimensions[get_column_letter(COL_REMARK)].width  = 32
     for col in range(COL_FIRST, COL_LAST + 1):
         ws.column_dimensions[get_column_letter(col)].width = 7
     ws.column_dimensions[get_column_letter(COL_PAL_540)].width  = 7
@@ -264,7 +264,9 @@ def _fill_data(ws, rows: list):
 
         # 所別/備註 (warehouse)
         ws.cell(row=r, column=COL_REMARK).value = entry.get("warehouse", "")
-        ws.cell(row=r, column=COL_REMARK).alignment = ALIGN_CENTER
+        ws.cell(row=r, column=COL_REMARK).alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=False
+        )
 
         # 品項數量
         for item in entry.get("items", []):
