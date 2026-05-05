@@ -321,7 +321,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.4.2</span>
+  <span class="version-badge">v1.4.3</span>
 </header>
 
 <div class="container">
@@ -948,10 +948,18 @@
     // 所別/備註
     const tdRem = document.createElement("td");
     tdRem.className = "col-remark meta-cell";
+    const remWrap = document.createElement("div");
+    remWrap.style.cssText = "display:flex; align-items:center; gap:3px;";
     const remInp = document.createElement("input");
     remInp.type = "text"; remInp.value = entry.warehouse || "";
+    remInp.style.flex = "1";
     remInp.onchange = () => { session[idx].warehouse = remInp.value; };
-    tdRem.appendChild(remInp);
+    const remDelBtn = document.createElement("button");
+    remDelBtn.textContent = "✕"; remDelBtn.className = "btn-icon";
+    remDelBtn.style.cssText = "padding:2px 6px; flex-shrink:0;";
+    remDelBtn.onclick = () => removeOrder(idx);
+    remWrap.append(remInp, remDelBtn);
+    tdRem.appendChild(remWrap);
 
     tr.append(tdDate, tdRem);
 
