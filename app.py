@@ -7,7 +7,7 @@ from ocr_parser import parse_transfer_order, parse_pdf_transfer_orders
 from form_template import build_workbook
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://markcqhsu.github.io"])
 
 
 @app.get("/health")
