@@ -313,17 +313,17 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.2.0</span>
+  <span class="version-badge">v1.3.0</span>
 </header>
 
 <div class="container">
 
   <!-- Step 1: 上傳調撥單 -->
   <div class="card">
-    <h2><span class="step-badge">1</span>上傳調撥單圖片</h2>
+    <h2><span class="step-badge">1</span>上傳調撥單（圖片或 PDF）</h2>
 
     <div class="upload-zone" id="drop-zone">
-      <input type="file" id="file-input" accept="image/*" onchange="onFileSelected(this)" />
+      <input type="file" id="file-input" accept="image/*,.pdf,application/pdf" onchange="onFileSelected(this)" />
       <div id="upload-hint">
         <div class="upload-icon">
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -332,11 +332,22 @@
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </div>
-        <p>點擊或拖曳調撥單圖片到此處</p>
-        <p class="hint">支援 JPG、PNG、BMP</p>
+        <p>點擊或拖曳調撥單到此處</p>
+        <p class="hint">支援 JPG、PNG、BMP 圖片，或 PDF（多頁批次辨識）</p>
       </div>
       <img id="preview-img" alt="預覽" />
-      <div class="upload-replace-overlay">替換圖片</div>
+      <div id="pdf-preview" style="display:none; padding:40px 20px; text-align:center;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cc0000" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <p id="pdf-filename" style="font-weight:700; margin-top:10px; color:#333; font-size:.95rem;"></p>
+        <p id="pdf-filesize" style="color:#aaa; font-size:.8rem; margin-top:4px;"></p>
+      </div>
+      <div class="upload-replace-overlay">替換檔案</div>
     </div>
 
     <div id="progress-wrap">
@@ -413,6 +424,37 @@
     </div>
   </div>
 
+  <!-- Step 2 (PDF): PDF 批次辨識結果 -->
+  <div class="card" id="pdf-result-card" style="display:none">
+    <h2><span class="step-badge">2</span>PDF 批次辨識結果</h2>
+    <div style="background:#e8f0fe; border:1px solid #b0c4f5; border-radius:7px; padding:9px 16px; margin-bottom:14px; font-size:.88rem; display:flex; flex-wrap:wrap; gap:20px; align-items:center;">
+      <span>共解析 <strong id="pdf-order-count">0</strong> 頁調撥單</span>
+      <span>含有效品項 <strong id="pdf-match-count">0</strong> 頁</span>
+    </div>
+    <div class="table-wrap">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width:110px">交貨日期</th>
+            <th>所別/備註</th>
+            <th>匹配品項（件數）</th>
+            <th style="color:#f0c040; background:#5a4500">未知品號</th>
+          </tr>
+        </thead>
+        <tbody id="pdf-orders-body"></tbody>
+      </table>
+    </div>
+    <div id="pdf-unmatched-section" style="display:none">
+      <div class="unmatched-box" style="margin-top:12px">
+        <strong>部分頁次含有不在系統清單中的品號（不會計入庫存表）：</strong>
+        <div id="pdf-unmatched-list" class="unmatched-list"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="addAllPdfOrders()">全部加入匯總</button>
+    </div>
+  </div>
+
   <!-- Step 3: 批次匯總預覽 -->
   <div class="card" id="session-card" style="max-width:none; width:100%">
     <h2><span class="step-badge">3</span>批次匯總預覽</h2>
@@ -470,6 +512,7 @@
   // ── State ────────────────────────────────────────────────────────────────
   let selectedFile = null;
   let session      = [];   // [{date, warehouse, items:[{code,qty}]}]  (client-side only)
+  let _pdfOrders   = [];   // raw parsed orders from /ocr-pdf
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
   const dropZone = document.getElementById("drop-zone");
@@ -482,16 +525,30 @@
 
   function onFileSelected(input) { if (input.files[0]) setFile(input.files[0]); }
 
+  function _isPdf(file) {
+    return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  }
+
   function setFile(file) {
     selectedFile = file;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = document.getElementById("preview-img");
-      img.src = e.target.result; img.style.display = "block";
-      dropZone.classList.add("has-image");
-      document.getElementById("upload-hint").style.display = "none";
-    };
-    reader.readAsDataURL(file);
+    document.getElementById("upload-hint").style.display = "none";
+    dropZone.classList.add("has-image");
+
+    if (_isPdf(file)) {
+      document.getElementById("preview-img").style.display = "none";
+      document.getElementById("pdf-preview").style.display = "block";
+      document.getElementById("pdf-filename").textContent  = file.name;
+      document.getElementById("pdf-filesize").textContent  = (file.size / 1024).toFixed(1) + " KB";
+    } else {
+      document.getElementById("pdf-preview").style.display = "none";
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById("preview-img");
+        img.src = e.target.result; img.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+
     document.getElementById("btn-ocr").disabled   = false;
     document.getElementById("btn-clear").disabled = false;
     setStatus("", "");
@@ -503,11 +560,13 @@
     document.getElementById("file-input").value = "";
     const img = document.getElementById("preview-img");
     img.src = ""; img.style.display = "none";
+    document.getElementById("pdf-preview").style.display = "none";
     dropZone.classList.remove("has-image");
     document.getElementById("upload-hint").style.display = "";
     document.getElementById("btn-ocr").disabled   = true;
     document.getElementById("btn-clear").disabled = true;
-    document.getElementById("result-card").style.display = "none";
+    document.getElementById("result-card").style.display     = "none";
+    document.getElementById("pdf-result-card").style.display = "none";
     hideProgress();
     setStatus("", "");
   }
@@ -535,12 +594,25 @@
   async function runOCR() {
     if (!selectedFile) return;
     document.getElementById("btn-ocr").disabled = true;
-    document.getElementById("result-card").style.display = "none";
+    document.getElementById("result-card").style.display     = "none";
+    document.getElementById("pdf-result-card").style.display = "none";
     setStatus("", "");
     showProgress(); setProgressStep(0);
 
     const form = new FormData();
-    form.append("image", selectedFile);
+    const pdf  = _isPdf(selectedFile);
+
+    if (pdf) {
+      form.append("file", selectedFile);
+      document.getElementById("ps-upload").textContent = "上傳 PDF";
+      document.getElementById("ps-ocr").textContent    = "解析頁面";
+      document.getElementById("ps-parse").textContent  = "欄位擷取";
+    } else {
+      form.append("image", selectedFile);
+      document.getElementById("ps-upload").textContent = "上傳圖片";
+      document.getElementById("ps-ocr").textContent    = "文字辨識";
+      document.getElementById("ps-parse").textContent  = "欄位解析";
+    }
 
     let stepIdx = 1;
     const ticker = setInterval(() => {
@@ -548,7 +620,8 @@
     }, 2800);
 
     try {
-      const res = await fetch(`${API}/ocr`, { method: "POST", body: form });
+      const endpoint = pdf ? `${API}/ocr-pdf` : `${API}/ocr`;
+      const res = await fetch(endpoint, { method: "POST", body: form });
       clearInterval(ticker);
       if (!res.ok) {
         const txt = await res.text();
@@ -558,8 +631,13 @@
       setProgressStep(3);
       setTimeout(() => {
         hideProgress();
-        fillResult(data);
-        setStatus("辨識完成，請確認後按「加入本批匯總」。", "ok");
+        if (pdf) {
+          fillPdfResults(data.orders || []);
+          setStatus(`PDF 解析完成，共找到 ${(data.orders || []).length} 張調撥單。`, "ok");
+        } else {
+          fillResult(data);
+          setStatus("辨識完成，請確認後按「加入本批匯總」。", "ok");
+        }
       }, 500);
     } catch (err) {
       clearInterval(ticker);
@@ -595,6 +673,72 @@
 
     document.getElementById("result-card").style.display = "block";
     document.getElementById("result-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function fillPdfResults(orders) {
+    _pdfOrders = orders;
+
+    const matchedCount = orders.filter(o => o.matched_items.length > 0).length;
+    document.getElementById("pdf-order-count").textContent = orders.length;
+    document.getElementById("pdf-match-count").textContent = matchedCount;
+
+    const tbody = document.getElementById("pdf-orders-body");
+    tbody.innerHTML = "";
+
+    const allUnmatched = [];
+    orders.forEach(order => {
+      const tr  = document.createElement("tr");
+      const matched   = order.matched_items  || [];
+      const unmatched = order.unmatched_items || [];
+
+      const matchedText = matched.length
+        ? matched.map(i => `${i.code} ×${i.qty.toLocaleString()}`).join("、")
+        : "—";
+      const unmatchedText = unmatched.length
+        ? unmatched.map(i => `${i.code} ×${i.qty.toLocaleString()}`).join("、")
+        : "";
+
+      tr.innerHTML = `
+        <td style="font-family:Consolas,monospace">${order.date || "—"}</td>
+        <td>${order.warehouse || "—"}</td>
+        <td style="font-size:.8rem">${matchedText}</td>
+        <td style="font-size:.8rem; color:#7a5500">${unmatchedText}</td>
+      `;
+      tbody.appendChild(tr);
+
+      unmatched.forEach(u => allUnmatched.push(`${u.code}（${u.qty} 件）`));
+    });
+
+    const unmatchedSection = document.getElementById("pdf-unmatched-section");
+    if (allUnmatched.length > 0) {
+      document.getElementById("pdf-unmatched-list").textContent = allUnmatched.join("、");
+      unmatchedSection.style.display = "block";
+    } else {
+      unmatchedSection.style.display = "none";
+    }
+
+    document.getElementById("pdf-result-card").style.display = "block";
+    document.getElementById("pdf-result-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function addAllPdfOrders() {
+    const valid = _pdfOrders.filter(o => (o.matched_items || []).length > 0);
+    if (!valid.length) {
+      setStatus("沒有含有效品項的調撥單可加入。", "error");
+      return;
+    }
+    valid.forEach(order => {
+      session.push({
+        date:      order.date,
+        warehouse: order.warehouse,
+        items:     (order.matched_items || []).map(i => ({ code: i.code, qty: i.qty })),
+      });
+    });
+    renderSession();
+    document.getElementById("pdf-result-card").style.display = "none";
+    clearUpload();
+    setStatus("", "");
+    document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });
   }
 
   function appendItemRow(code = "", qty = "", pallets = 0) {

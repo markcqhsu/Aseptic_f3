@@ -3,7 +3,7 @@ import tempfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 
-from ocr_parser import parse_transfer_order
+from ocr_parser import parse_transfer_order, parse_pdf_transfer_orders
 from form_template import build_workbook
 
 app = Flask(__name__)
@@ -47,6 +47,36 @@ def ocr():
         "matched_items":   parsed["matched_items"],
         "unmatched_items": parsed["unmatched_items"],
     })
+
+
+@app.post("/ocr-pdf")
+def ocr_pdf():
+    """
+    Accepts multipart/form-data with field 'file' (PDF).
+    Returns parsed order data for every page of the PDF.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "no file field"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "empty filename"}), 400
+
+    if not file.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "file must be a PDF"}), 400
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        orders = parse_pdf_transfer_orders(tmp_path)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        os.unlink(tmp_path)
+
+    return jsonify({"orders": orders})
 
 
 @app.post("/export")

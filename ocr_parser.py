@@ -1,6 +1,7 @@
 import re
 import google.auth
 from google.cloud import vision
+import pdfplumber
 
 # 22 個已知品項代碼
 KNOWN_CODES = {
@@ -70,7 +71,8 @@ def _extract_date(text: str) -> str:
 
 def _extract_receiving_location(text: str) -> str:
     # 收貨儲位：1108 北區供貨倉庫 → 取名稱部分
-    m = re.search(r'收貨儲位[：:\s]*\d+\s+(.+?)(?:\s{2,}|\t|\n|$)', text)
+    # 用多種停止條件相容 OCR（雙空格）與 PDF（關鍵字緊跟）兩種格式
+    m = re.search(r'收貨儲位[：:\s]*\d+\s+(.+?)(?:\s{2,}|\t|\n|採購單號|裝運單號|發貨|$)', text)
     return m.group(1).strip() if m else ""
 
 def _extract_shipment_no(text: str) -> str:
@@ -235,3 +237,125 @@ def _group_by_y(items: list, tol: int = 15) -> list:
             cur, ref_y = [item], item["y"]
     groups.append(sorted(cur, key=lambda i: i["x"]))
     return groups
+
+
+# ── PDF 批次解析 ──────────────────────────────────────────
+
+def parse_pdf_transfer_orders(pdf_path: str) -> list:
+    """Parse every page of a PDF transfer-order file.
+    Each page is one order; returns a list in the same dict shape as parse_transfer_order."""
+    results = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text   = page.extract_text() or ""
+            tables = page.extract_tables()
+
+            receiving_loc   = _extract_receiving_location(text)
+            shipment_no     = _extract_shipment_no(text)
+            warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
+
+            result = {
+                "date":            _extract_date(text),
+                "warehouse":       warehouse_label,
+                "shipment_no":     shipment_no,
+                "matched_items":   [],
+                "unmatched_items": [],
+            }
+
+            for item in _parse_pdf_table(tables):
+                key = "matched_items" if item["code"] in KNOWN_CODES else "unmatched_items"
+                result[key].append(item)
+
+            if result["matched_items"] or result["unmatched_items"]:
+                results.append(result)
+
+    return results
+
+
+def _parse_pdf_table(tables: list) -> list:
+    """Extract items from a pdfplumber table list for one page."""
+    for table in tables:
+        if not table:
+            continue
+
+        # Find header row containing 序號 and 品號/數量
+        header_idx = -1
+        for i, row in enumerate(table):
+            row_text = " ".join(str(c) for c in row if c is not None)
+            if "序號" in row_text and ("品號" in row_text or "數量" in row_text):
+                header_idx = i
+                break
+
+        if header_idx == -1:
+            continue
+
+        header_row = table[header_idx]
+
+        # Locate column indices from header
+        code_col = qty_col = pallets_col = None
+        for j, cell in enumerate(header_row):
+            if cell is None:
+                continue
+            s = str(cell)
+            if "品號" in s and code_col is None:
+                code_col = j
+            if "數量" in s and qty_col is None:
+                qty_col = j
+            if "棧板" in s and pallets_col is None:
+                pallets_col = j
+
+        if code_col is None:
+            code_col = 1  # fallback
+
+        result = []
+        for row in table[header_idx + 1:]:
+            if not row:
+                continue
+            row_text = " ".join(str(c) for c in row if c is not None)
+            if any(kw in row_text for kw in ["合計", "全家棧板", "FPAL", "第一聯", "第二聯"]):
+                continue
+
+            code_cell = str(row[code_col] or "").strip() if code_col < len(row) else ""
+            code = _extract_code_from_cell(code_cell)
+            if not code:
+                continue
+
+            qty = 0
+            if qty_col is not None and qty_col < len(row):
+                raw = str(row[qty_col] or "").replace(",", "").strip()
+                if re.match(r'^\d+$', raw):
+                    qty = int(raw)
+
+            pallets = 0
+            if pallets_col is not None and pallets_col < len(row):
+                raw = str(row[pallets_col] or "").replace(",", "").strip()
+                if re.match(r'^\d+$', raw):
+                    pallets = int(raw)
+
+            result.append({"code": code, "qty": qty, "pallets": pallets})
+
+        return result
+
+    return []
+
+
+def _extract_code_from_cell(text: str) -> str:
+    """Extract product code from a PDF table cell like '3441 RGT5F' or 'RGT5F'."""
+    text = text.strip()
+    if not text:
+        return ""
+    if text in KNOWN_CODES:
+        return text
+    # "number code" format
+    m = re.match(r'^\d+\s+([A-Z][A-Z0-9]{2,7})$', text)
+    if m:
+        return m.group(1)
+    # Known code embedded in text
+    for code in KNOWN_CODES:
+        if code in text:
+            return code
+    # Generic code pattern
+    m = re.search(r'\b([A-Z]{2,5}\d[A-Z0-9]{0,3})\b', text)
+    if m:
+        return m.group(1)
+    return ""
