@@ -74,6 +74,11 @@ def _extract_receiving_location(text: str) -> str:
     m = re.search(r'收貨儲位[：:\s]*\d+\s+(.+?)(?:\s{2,}|\t|\n|採購單號|裝運單號|發貨|$)', text)
     return m.group(1).strip() if m else ""
 
+def _extract_shipping_point(text: str) -> str:
+    # 出貨點：1403 宏全無菌三倉 → 取名稱部分（裝載明細表格式）
+    m = re.search(r'出貨點[：:\s]*\d+\s+(.+?)(?:\s{2,}|\t|\n|裝載日期|裝運單號|$)', text)
+    return m.group(1).strip() if m else ""
+
 def _extract_shipment_no(text: str) -> str:
     m = re.search(r'裝運單號[：:\s]*(\d+)', text)
     return m.group(1) if m else ""
@@ -250,7 +255,10 @@ def parse_pdf_transfer_orders(pdf_path: str) -> list:
             text   = page.extract_text() or ""
             tables = page.extract_tables()
 
-            receiving_loc   = _extract_receiving_location(text)
+            if "出貨點" in text:
+                receiving_loc = _extract_shipping_point(text)
+            else:
+                receiving_loc = _extract_receiving_location(text)
             shipment_no     = _extract_shipment_no(text)
             warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
 
@@ -278,11 +286,12 @@ def _parse_pdf_table(tables: list) -> list:
         if not table:
             continue
 
-        # Find header row containing 序號 and 品號/數量
+        # Find header row: 調撥單格式（序號+品號）或裝載表格式（商品編號+數量）
         header_idx = -1
         for i, row in enumerate(table):
             row_text = " ".join(str(c) for c in row if c is not None)
-            if "序號" in row_text and ("品號" in row_text or "數量" in row_text):
+            if ("序號" in row_text and ("品號" in row_text or "數量" in row_text)) or \
+               ("商品編號" in row_text and "數量" in row_text):
                 header_idx = i
                 break
 
@@ -297,7 +306,7 @@ def _parse_pdf_table(tables: list) -> list:
             if cell is None:
                 continue
             s = str(cell)
-            if "品號" in s and code_col is None:
+            if ("品號" in s or "產品小名" in s) and code_col is None:
                 code_col = j
             if "數量" in s and qty_col is None:
                 qty_col = j
@@ -312,7 +321,7 @@ def _parse_pdf_table(tables: list) -> list:
             if not row:
                 continue
             row_text = " ".join(str(c) for c in row if c is not None)
-            if any(kw in row_text for kw in ["合計", "全家棧板", "FPAL", "第一聯", "第二聯"]):
+            if any(kw in row_text for kw in ["合計", "全家棧板", "FPAL", "第一聯", "第二聯", "成品倉庫"]):
                 continue
 
             code_cell = str(row[code_col] or "").strip() if code_col < len(row) else ""
