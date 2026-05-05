@@ -70,7 +70,7 @@ def ocr_pdf():
         tmp_path = tmp.name
 
     try:
-        orders = parse_pdf_transfer_orders(tmp_path)
+        orders = parse_pdf_transfer_orders(tmp_path, filename=file.filename)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:

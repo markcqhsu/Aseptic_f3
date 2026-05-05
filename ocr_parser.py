@@ -245,10 +245,19 @@ def _group_by_y(items: list, tol: int = 15) -> list:
 
 # ── PDF 批次解析 ──────────────────────────────────────────
 
-def parse_pdf_transfer_orders(pdf_path: str) -> list:
+def parse_pdf_transfer_orders(pdf_path: str, filename: str = "") -> list:
     """Parse every page of a PDF transfer-order file.
     Each page is one order; returns a list in the same dict shape as parse_transfer_order."""
     import pdfplumber  # lazy import — keeps other endpoints alive even if pdfplumber is absent
+
+    # 從檔名提取識別字（如「良鎮裝載明細表.pdf」→「良鎮」）
+    filename_label = ""
+    if filename:
+        stem = re.sub(r'\.pdf$', '', filename, flags=re.IGNORECASE)  # 去副檔名
+        stem = re.sub(r'^\d+\s*', '', stem)                          # 去開頭日期
+        stem = re.sub(r'裝載明細表$', '', stem).strip()              # 去結尾
+        filename_label = stem
+
     results = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -256,11 +265,13 @@ def parse_pdf_transfer_orders(pdf_path: str) -> list:
             tables = page.extract_tables()
 
             if "出貨點" in text:
-                receiving_loc = _extract_shipping_point(text)
+                # 裝載明細表：所別/備註 = 檔名識別字 + 裝運單號
+                shipment_no     = _extract_shipment_no(text)
+                warehouse_label = f"{filename_label} {shipment_no}".strip() if filename_label else shipment_no
             else:
-                receiving_loc = _extract_receiving_location(text)
-            shipment_no     = _extract_shipment_no(text)
-            warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
+                receiving_loc   = _extract_receiving_location(text)
+                shipment_no     = _extract_shipment_no(text)
+                warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
 
             result = {
                 "date":            _extract_date(text),
