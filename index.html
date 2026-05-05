@@ -321,7 +321,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.5.2</span>
+  <span class="version-badge">v1.5.3</span>
 </header>
 
 <div class="container">
@@ -713,12 +713,23 @@
         ? unmatched.map(i => `${i.code} ×${i.qty.toLocaleString()}`).join("、")
         : "";
 
-      tr.innerHTML = `
-        <td style="font-family:Consolas,monospace">${order.date || "—"}</td>
-        <td>${order.warehouse || "—"}</td>
-        <td style="font-size:.8rem">${matchedText}</td>
-        <td style="font-size:.8rem; color:#7a5500">${unmatchedText}</td>
-      `;
+      const tdDate = document.createElement("td");
+      tdDate.style.fontFamily = "Consolas,monospace";
+      tdDate.textContent = order.date || "—";
+
+      const tdWh = document.createElement("td");
+      tdWh.textContent = order.warehouse || "—";
+
+      const tdMatched = document.createElement("td");
+      tdMatched.style.fontSize = ".8rem";
+      tdMatched.textContent = matchedText;
+
+      const tdUnmatched = document.createElement("td");
+      tdUnmatched.style.fontSize = ".8rem";
+      tdUnmatched.style.color = "#7a5500";
+      tdUnmatched.textContent = unmatchedText;
+
+      tr.append(tdDate, tdWh, tdMatched, tdUnmatched);
       tbody.appendChild(tr);
 
       unmatched.forEach(u => allUnmatched.push(`${u.code}（${u.qty} 件）`));

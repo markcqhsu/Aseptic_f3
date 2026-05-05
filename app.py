@@ -35,8 +35,8 @@ def ocr():
 
     try:
         parsed = parse_transfer_order(tmp_path)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "OCR 處理失敗，請確認圖片格式"}), 500
     finally:
         os.unlink(tmp_path)
 
@@ -71,8 +71,8 @@ def ocr_pdf():
 
     try:
         orders = parse_pdf_transfer_orders(tmp_path, filename=file.filename)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "PDF 處理失敗，請確認檔案格式"}), 500
     finally:
         os.unlink(tmp_path)
 
@@ -93,8 +93,8 @@ def export():
 
     try:
         xlsx_bytes = build_workbook(rows)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Excel 產生失敗"}), 500
 
     return send_file(
         __import__("io").BytesIO(xlsx_bytes),
