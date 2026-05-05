@@ -295,6 +295,14 @@
     .preview-table tbody tr:hover td.col-remark { background: #f4f7ff; }
     .preview-table tbody tr:hover td.pallet-cell { background: #dde6ff; }
 
+    /* ── Shared (F2+F3) item highlight ── */
+    .items-table .shared-row td { background: #fff8e1; }
+    .items-table .shared-row:hover td { background: #ffe8a0; }
+    .preview-table th.col-product.col-shared { background: #7a5200; color: #ffe08a; }
+    .preview-table td.col-shared { background: #fff8e1; }
+    .preview-table tbody tr:hover td.col-shared { background: #ffe8a0; }
+    .preview-table tfoot td.col-shared { background: #fff8e1; }
+
     /* ── Export summary ── */
     .export-summary {
       background: #f5f7fa; border-radius: 8px;
@@ -313,7 +321,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.3.1</span>
+  <span class="version-badge">v1.4.0</span>
 </header>
 
 <div class="container">
@@ -469,6 +477,11 @@
       </table>
     </div>
 
+    <div id="shared-legend" style="display:none; margin:12px 0 4px; font-size:.82rem; color:#5a3a00; background:#fff8e1; border:1px solid #d0a820; border-radius:6px; padding:8px 14px; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span style="display:inline-block; width:16px; height:16px; background:#fff8e1; border:2px solid #d0a820; border-radius:3px; flex-shrink:0;"></span>
+      <strong>二廠、三廠共用品項：</strong>RGG9B、RGG3B、RTT9B、RTT3B、RBZ9B、RBZ3B、RCB9B、RCB3B
+    </div>
+
     <div id="export-area" style="display:none">
       <div class="export-summary">
         <div>已匯入 <strong id="order-count">0</strong> 張調撥單</div>
@@ -487,6 +500,8 @@
   const API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
     ? "http://localhost:8080"
     : "https://aseptic-f3-api-65578120182.asia-east1.run.app";
+
+  const SHARED_CODES = new Set(["RGG9B","RGG3B","RTT9B","RTT3B","RBZ9B","RBZ3B","RCB9B","RCB3B"]);
 
   const KNOWN_CODES = [
     "RGT5F","RGM5F","RGG9B","RGG3B","RTT9B","RTT3B",
@@ -758,6 +773,12 @@
     });
     tdCode.appendChild(sel);
 
+    if (SHARED_CODES.has(sel.value)) tr.classList.add("shared-row");
+    sel.onchange = () => {
+      if (SHARED_CODES.has(sel.value)) tr.classList.add("shared-row");
+      else tr.classList.remove("shared-row");
+    };
+
     // 數量
     const tdQty = document.createElement("td");
     tdQty.style.textAlign = "right";
@@ -837,17 +858,20 @@
     const empty     = document.getElementById("session-empty");
     const tableOuter= document.getElementById("full-table-outer");
     const exportArea= document.getElementById("export-area");
+    const legend    = document.getElementById("shared-legend");
 
     if (session.length === 0) {
       empty.style.display      = "block";
       tableOuter.style.display = "none";
       exportArea.style.display = "none";
+      legend.style.display     = "none";
       return;
     }
 
     empty.style.display      = "none";
     tableOuter.style.display = "block";
     exportArea.style.display = "block";
+    legend.style.display     = "flex";
 
     _buildTableHead();
     _buildTableBody();
@@ -864,7 +888,10 @@
     const thRem  = _th("所別/備註", "th-meta col-remark"); thRem.style.textAlign = "center";
     tr.append(thDate, thRem);
 
-    KNOWN_CODES.forEach(code => tr.appendChild(_th(PRODUCT_HDR[code], "col-product")));
+    KNOWN_CODES.forEach(code => {
+      const cls = "col-product" + (SHARED_CODES.has(code) ? " col-shared" : "");
+      tr.appendChild(_th(PRODUCT_HDR[code], cls));
+    });
     tr.appendChild(_th("棧板", "th-meta col-pallet"));
 
     const thAct = _th("", "col-action");
@@ -894,6 +921,7 @@
       const td = document.createElement("td");
       td.textContent = totals[code] || "";
       td.style.textAlign = "center";
+      if (SHARED_CODES.has(code)) td.classList.add("col-shared");
       tr.appendChild(td);
     });
 
@@ -955,6 +983,7 @@
       };
       inp.onfocus = () => inp.style.background = "#fffde7";
       inp.onblur  = () => inp.style.background = "transparent";
+      if (SHARED_CODES.has(code)) td.classList.add("col-shared");
       td.appendChild(inp);
       tr.appendChild(td);
     });
