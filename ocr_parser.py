@@ -1,7 +1,6 @@
 import re
 import google.auth
 from google.cloud import vision
-import pdfplumber
 
 # 22 個已知品項代碼
 KNOWN_CODES = {
@@ -244,6 +243,7 @@ def _group_by_y(items: list, tol: int = 15) -> list:
 def parse_pdf_transfer_orders(pdf_path: str) -> list:
     """Parse every page of a PDF transfer-order file.
     Each page is one order; returns a list in the same dict shape as parse_transfer_order."""
+    import pdfplumber  # lazy import — keeps other endpoints alive even if pdfplumber is absent
     results = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
