@@ -38,7 +38,7 @@ def parse_transfer_order(image_path: str) -> dict:
 
     receiving_loc  = _extract_receiving_location(full_text)
     shipment_no    = _extract_shipment_no(full_text)
-    warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
+    warehouse_label = f"{receiving_loc} - {shipment_no}".strip() if receiving_loc else shipment_no
 
     result = {
         "date":         _extract_date(full_text),
@@ -267,11 +267,11 @@ def parse_pdf_transfer_orders(pdf_path: str, filename: str = "") -> list:
             if "出貨點" in text:
                 # 裝載明細表：所別/備註 = 檔名識別字 + 裝運單號
                 shipment_no     = _extract_shipment_no(text)
-                warehouse_label = f"{filename_label} {shipment_no}".strip() if filename_label else shipment_no
+                warehouse_label = f"{filename_label} - {shipment_no}".strip() if filename_label else shipment_no
             else:
                 receiving_loc   = _extract_receiving_location(text)
                 shipment_no     = _extract_shipment_no(text)
-                warehouse_label = f"{receiving_loc} {shipment_no}".strip() if receiving_loc else shipment_no
+                warehouse_label = f"{receiving_loc} - {shipment_no}".strip() if receiving_loc else shipment_no
 
             result = {
                 "date":            _extract_date(text),
