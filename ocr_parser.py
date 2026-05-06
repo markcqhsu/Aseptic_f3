@@ -719,52 +719,67 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 destination = _VTL_CUSTOMER_FIXES.get(line, line)
                 break
 
-        # Extract items: lines matching "N-PRODUCTCODE ..."
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            m = re.match(r"\d+-([A-Z]{3}[\dOSIl]{4}\w+)", line)
-            if m:
-                raw_code = m.group(1)
-                normalized = _normalize_vtl_code(raw_code)
-                qty = 0
-                # Scan ahead for CIN/CTN followed by quantity
-                for j in range(i, min(i + 7, len(lines))):
-                    # Stop if we've crossed into the next item's line
-                    if j > i and re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[j]):
-                        break
-                    # Inline: capture everything after CTN/CIN, skip date tokens
-                    inline_m = re.search(r"(?:CIN|CTN)\s+(.*)", lines[j])
-                    if inline_m:
-                        for tok in inline_m.group(1).split():
-                            q = _parse_vtl_qty(tok)
+        # Extract items: two-pass approach.
+        # OCR sometimes outputs all product-code lines first, then CTN/qty lines,
+        # so a simple scan-ahead would steal a later item's CTN for an earlier one.
+        # Pass 1: collect item code positions in order.
+        item_starts = []
+        for ii, ln in enumerate(lines):
+            mm = re.match(r"\d+-([A-Z]{3}[\dOSIl]{4}\w+)", ln)
+            if mm:
+                item_starts.append((ii, mm.group(1)))
+
+        _IP = re.compile(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+")
+        claimed_j = set()
+
+        def _find_qty(start, end, skip_after=None):
+            """Return first unclaimed CTN qty in lines[start:end].
+            skip_after: skip lines that are item-code lines at j > skip_after."""
+            for j in range(start, end):
+                if j in claimed_j:
+                    continue
+                ln2 = lines[j]
+                if skip_after is not None and j > skip_after and _IP.match(ln2):
+                    continue
+                im = re.search(r"(?:CIN|CTN)\s+(.*)", ln2)
+                if im:
+                    q = 0
+                    for tok in im.group(1).split():
+                        q = _parse_vtl_qty(tok)
+                        if q > 0:
+                            break
+                    if q == 0:
+                        for k in range(j + 1, min(j + 3, len(lines))):
+                            if k not in claimed_j:
+                                q = _parse_vtl_qty(lines[k])
+                                if q > 0:
+                                    break
+                    if q > 0:
+                        claimed_j.add(j)
+                        return q
+                elif re.match(r"^(?:CIN|CTN)$", ln2):
+                    q = 0
+                    for k in range(j + 1, min(j + 3, len(lines))):
+                        if k not in claimed_j:
+                            q = _parse_vtl_qty(lines[k])
                             if q > 0:
-                                qty = q
                                 break
-                        if qty == 0:
-                            # CTN on this line but qty is on next line(s)
-                            for k in range(j + 1, min(j + 5, len(lines))):
-                                # Stop at the next item-code line
-                                if re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[k]):
-                                    break
-                                candidate = _parse_vtl_qty(lines[k])
-                                if candidate > 0:
-                                    qty = candidate
-                                    break
-                        break  # always stop after finding CTN for this item
-                    # Standalone CIN/CTN on its own line
-                    if re.match(r"^(?:CIN|CTN)$", lines[j]):
-                        for k in range(j + 1, min(j + 8, len(lines))):
-                            if re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[k]):
-                                break
-                            candidate = _parse_vtl_qty(lines[k])
-                            if candidate > 0:
-                                qty = candidate
-                                break
-                        break
-                if qty > 0:
-                    items.append({"code": normalized, "qty": qty})
-            i += 1
+                    if q > 0:
+                        claimed_j.add(j)
+                        return q
+            return 0
+
+        # Pass 2: assign each item its CTN quantity.
+        # First try within territory (before next item's line);
+        # fall back to full-block scan skipping other item-code lines.
+        for n, (ii, raw_code) in enumerate(item_starts):
+            normalized = _normalize_vtl_code(raw_code)
+            nxt = item_starts[n + 1][0] if n + 1 < len(item_starts) else min(ii + 7, len(lines))
+            qty = _find_qty(ii, nxt)
+            if qty == 0:
+                qty = _find_qty(ii, len(lines), skip_after=ii)
+            if qty > 0:
+                items.append({"code": normalized, "qty": qty})
 
         if items:
             wh = (destination + order_no) if destination else order_no
