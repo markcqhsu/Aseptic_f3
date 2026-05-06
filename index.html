@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>宏全三廠 調撥單辨識系統</title>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -303,6 +304,23 @@
     .preview-table tbody tr:hover td.col-shared { background: #ffe8a0; }
     .preview-table tfoot td.col-shared { background: #fff8e1; }
 
+    /* ── Brand selector ── */
+    .brand-bar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 14px 24px;
+    }
+    .brand-bar label { font-weight: 700; color: #556; font-size: .9rem; margin-right: 4px; }
+    .brand-btn {
+      padding: 7px 20px; border: 2px solid #ccd; border-radius: 20px;
+      background: #fff; color: #556; font-size: .88rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .brand-btn.active-coke   { border-color: #c00; background: #c00; color: #fff; }
+    .brand-btn.active-wc     { border-color: #e67e00; background: #e67e00; color: #fff; }
+    .brand-btn:hover:not(.active-coke):not(.active-wc) { border-color: #aaa; background: #f5f5f5; }
+
     /* ── Export summary ── */
     .export-summary {
       background: #f5f7fa; border-radius: 8px;
@@ -321,10 +339,17 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.5.3</span>
+  <span class="version-badge">v1.6.0</span>
 </header>
 
 <div class="container">
+
+  <!-- Brand selector -->
+  <div class="brand-bar">
+    <label>品牌：</label>
+    <button class="brand-btn active-coke" id="btn-brand-coke" onclick="switchBrand('coke')">可樂</button>
+    <button class="brand-btn"             id="btn-brand-wc"   onclick="switchBrand('wc')">味全</button>
+  </div>
 
   <!-- Step 1: 上傳調撥單 -->
   <div class="card">
@@ -399,7 +424,7 @@
         <label>所別/備註</label>
         <input type="text" id="inp-warehouse" placeholder="北區供貨倉庫 938374" style="width:210px" />
       </div>
-      <div class="meta-item">
+      <div class="meta-item" id="shipment-field">
         <label>裝運單號</label>
         <input type="text" id="inp-shipment" placeholder="" style="width:110px" />
       </div>
@@ -501,33 +526,657 @@
     ? "http://localhost:8080"
     : "https://aseptic-f3-api-65578120182.asia-east1.run.app";
 
-  const SHARED_CODES = new Set(["RGG9B","RGG3B","RTT9B","RTT3B","RBZ9B","RBZ3B","RCB9B","RCB3B"]);
-
-  const KNOWN_CODES = [
-    "RGT5F","RGM5F","RGG9B","RGG3B","RTT9B","RTT3B",
-    "RBZ9B","RBZ3B","RBZ5F","RCB9B","RCB3B","GAB5F",
-    "GBW5F","GB2M", "GLW5F","GL2M", "GCL5F","GCL2M",
-    "GHW5F","GHW2M","RYB5F","KMT5F",
-  ];
-
-  const PRODUCT_HDR = {
-    "RGT5F":"RGT5F\n350ml", "RGM5F":"RGM5F\n350ml",
-    "RGG9B":"RGG9B\n580ml", "RGG3B":"RGG3B\n580ml",
-    "RTT9B":"RTT9B\n580ml", "RTT3B":"RTT3B\n580ml",
-    "RBZ9B":"RBZ9B\n580ml", "RBZ3B":"RBZ3B\n580ml",
-    "RBZ5F":"RBZ5F\n350ml", "RCB9B":"RCB9B\n580ml",
-    "RCB3B":"RCB3B\n580ml", "GAB5F":"GAB5F\n350ml",
-    "GBW5F":"GBW5F\n350ml", "GB2M" :"GB2M\n350ml",
-    "GLW5F":"GLW5F\n350ml", "GL2M" :"GL2M\n350ml",
-    "GCL5F":"GCL5F\n350ml", "GCL2M":"GCL2M\n350ml",
-    "GHW5F":"GHW5F\n350ml", "GHW2M":"GHW2M\n350ml",
-    "RYB5F":"RYB5F\n350ml", "KMT5F":"KMT5F\n350ml",
+  // ── Brand configs ─────────────────────────────────────────────────────────
+  const BRANDS = {
+    coke: {
+      name: "可樂",
+      codes: [
+        "RGT5F","RGM5F","RGG9B","RGG3B","RTT9B","RTT3B",
+        "RBZ9B","RBZ3B","RBZ5F","RCB9B","RCB3B","GAB5F",
+        "GBW5F","GB2M", "GLW5F","GL2M", "GCL5F","GCL2M",
+        "GHW5F","GHW2M","RYB5F","KMT5F",
+      ],
+      labels: {
+        "RGT5F":"RGT5F\n350ml", "RGM5F":"RGM5F\n350ml",
+        "RGG9B":"RGG9B\n580ml", "RGG3B":"RGG3B\n580ml",
+        "RTT9B":"RTT9B\n580ml", "RTT3B":"RTT3B\n580ml",
+        "RBZ9B":"RBZ9B\n580ml", "RBZ3B":"RBZ3B\n580ml",
+        "RBZ5F":"RBZ5F\n350ml", "RCB9B":"RCB9B\n580ml",
+        "RCB3B":"RCB3B\n580ml", "GAB5F":"GAB5F\n350ml",
+        "GBW5F":"GBW5F\n350ml", "GB2M" :"GB2M\n350ml",
+        "GLW5F":"GLW5F\n350ml", "GL2M" :"GL2M\n350ml",
+        "GCL5F":"GCL5F\n350ml", "GCL2M":"GCL2M\n350ml",
+        "GHW5F":"GHW5F\n350ml", "GHW2M":"GHW2M\n350ml",
+        "RYB5F":"RYB5F\n350ml", "KMT5F":"KMT5F\n350ml",
+      },
+      sharedCodes: new Set(["RGG9B","RGG3B","RTT9B","RTT3B","RBZ9B","RBZ3B","RCB9B","RCB3B"]),
+      calcPallets(qtyMap) {
+        let s80 = 0, s60 = 0;
+        this.codes.forEach(c => {
+          const q = parseInt(qtyMap[c]) || 0;
+          if (c.endsWith("5F") || c.endsWith("2M")) s80 += q;
+          else if (c.endsWith("9B") || c.endsWith("3B")) s60 += q;
+        });
+        return Math.floor(s80 / 80 + s60 / 60);
+      },
+      ocrEndpoint:    "/ocr",
+      ocrPdfEndpoint: "/ocr-pdf",
+      exportEndpoint: "/export",
+      exportName:     () => `宏全三廠_成品庫存_${_today()}.xlsx`,
+      exportLabel:    "匯出成品庫存 Excel",
+      showSharedLegend: true,
+    },
+    wc: {
+      name: "味全",
+      codes: ["黑咖啡_全台", "黑咖啡_4入", "拿鐵_全台", "拿鐵_4入"],
+      labels: {
+        "黑咖啡_全台": "黑咖啡\n340ML\n全台",
+        "黑咖啡_4入":  "黑咖啡\n340ML\n全台4入",
+        "拿鐵_全台":   "拿鐵\n340ML\n全台",
+        "拿鐵_4入":    "拿鐵\n340ML\n全台4入",
+      },
+      sharedCodes: new Set(),
+      calcPallets(qtyMap) {
+        let sum = 0;
+        this.codes.forEach(c => { sum += parseInt(qtyMap[c]) || 0; });
+        return Math.floor(sum / 80);
+      },
+      ocrEndpoint:    "/ocr-weichuan",
+      ocrPdfEndpoint: "/ocr-weichuan",
+      exportEndpoint: "/export-weichuan",
+      exportName:     () => `味全代工明細表_${_today()}.xlsx`,
+      exportLabel:    "匯出代工明細表 Excel",
+      showSharedLegend: false,
+    },
   };
 
-  // ── State ────────────────────────────────────────────────────────────────
+  function _today() { return new Date().toISOString().slice(0,10).replace(/-/g,""); }
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let currentBrand = "coke";
   let selectedFile = null;
-  let session      = [];   // [{date, warehouse, items:[{code,qty}]}]  (client-side only)
-  let _pdfOrders   = [];   // raw parsed orders from /ocr-pdf
+  let session      = [];
+  let _pdfOrders   = [];
+
+  function switchBrand(key) {
+    if (key === currentBrand) return;
+    if (session.length > 0) {
+      if (!confirm(`切換品牌將清除目前 ${session.length} 筆匯總資料，確定繼續？`)) return;
+    }
+    currentBrand = key;
+    session = []; _pdfOrders = [];
+    document.getElementById("btn-brand-coke").className =
+      "brand-btn" + (key === "coke" ? " active-coke" : "");
+    document.getElementById("btn-brand-wc").className =
+      "brand-btn" + (key === "wc" ? " active-wc" : "");
+    clearUpload();
+    renderSession();
+    // Update export button label
+    document.querySelector("#export-area .btn-success").textContent = BRANDS[key].exportLabel;
+    // Show/hide shared legend
+    document.getElementById("shared-legend").style.display =
+      BRANDS[key].showSharedLegend ? "flex" : "none";
+  }
+
+  // Shortcut: current brand config
+  function B() { return BRANDS[currentBrand]; }
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  const dropZone = document.getElementById("drop-zone");
+  dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault(); dropZone.classList.remove("drag");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+
+  function onFileSelected(input) { if (input.files[0]) setFile(input.files[0]); }
+
+  function _isPdf(file) {
+    return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  }
+
+  function setFile(file) {
+    selectedFile = file;
+    document.getElementById("upload-hint").style.display = "none";
+    dropZone.classList.add("has-image");
+
+    if (_isPdf(file)) {
+      document.getElementById("preview-img").style.display = "none";
+      document.getElementById("pdf-preview").style.display = "block";
+      document.getElementById("pdf-filename").textContent  = file.name;
+      document.getElementById("pdf-filesize").textContent  = (file.size / 1024).toFixed(1) + " KB";
+    } else {
+      document.getElementById("pdf-preview").style.display = "none";
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById("preview-img");
+        img.src = e.target.result; img.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById("btn-ocr").disabled   = false;
+    document.getElementById("btn-clear").disabled = false;
+    setStatus("", "");
+    hideProgress();
+  }
+
+  function clearUpload() {
+    selectedFile = null;
+    document.getElementById("file-input").value = "";
+    const img = document.getElementById("preview-img");
+    img.src = ""; img.style.display = "none";
+    document.getElementById("pdf-preview").style.display = "none";
+    dropZone.classList.remove("has-image");
+    document.getElementById("upload-hint").style.display = "";
+    document.getElementById("btn-ocr").disabled   = true;
+    document.getElementById("btn-clear").disabled = true;
+    document.getElementById("result-card").style.display     = "none";
+    document.getElementById("pdf-result-card").style.display = "none";
+    hideProgress();
+    setStatus("", "");
+  }
+
+  // ── Progress ─────────────────────────────────────────────────────────────
+  const STEPS = ["ps-upload","ps-ocr","ps-parse","ps-done"];
+  const PCTS  = [15, 50, 85, 100];
+
+  function showProgress() {
+    document.getElementById("progress-wrap").style.display = "block";
+    STEPS.forEach(id => document.getElementById(id).className = "progress-step");
+    setProgressBar(0);
+  }
+  function hideProgress() { document.getElementById("progress-wrap").style.display = "none"; }
+  function setProgressStep(idx) {
+    STEPS.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.className = "progress-step" + (i < idx ? " done" : i === idx ? " active" : "");
+    });
+    setProgressBar(PCTS[idx] ?? 100);
+  }
+  function setProgressBar(pct) { document.getElementById("progress-bar").style.width = pct + "%"; }
+
+  // ── OCR ──────────────────────────────────────────────────────────────────
+  async function runOCR() {
+    if (!selectedFile) return;
+    const brand = B();
+    document.getElementById("btn-ocr").disabled = true;
+    document.getElementById("result-card").style.display     = "none";
+    document.getElementById("pdf-result-card").style.display = "none";
+    setStatus("", "");
+    showProgress(); setProgressStep(0);
+
+    const form = new FormData();
+    const pdf  = _isPdf(selectedFile);
+
+    if (pdf) {
+      form.append("file", selectedFile);
+      document.getElementById("ps-upload").textContent = "上傳 PDF";
+      document.getElementById("ps-ocr").textContent    = "解析頁面";
+      document.getElementById("ps-parse").textContent  = "欄位擷取";
+    } else {
+      form.append("image", selectedFile);
+      document.getElementById("ps-upload").textContent = "上傳圖片";
+      document.getElementById("ps-ocr").textContent    = "文字辨識";
+      document.getElementById("ps-parse").textContent  = "欄位解析";
+    }
+
+    let stepIdx = 1;
+    const ticker = setInterval(() => {
+      if (stepIdx < STEPS.length - 1) setProgressStep(stepIdx++);
+    }, 2800);
+
+    try {
+      const endpoint = pdf ? `${API}${brand.ocrPdfEndpoint}` : `${API}${brand.ocrEndpoint}`;
+      const res = await fetch(endpoint, { method: "POST", body: form });
+      clearInterval(ticker);
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`HTTP ${res.status}：${txt.slice(0, 160)}`);
+      }
+      const data = await res.json();
+      setProgressStep(3);
+      setTimeout(() => {
+        hideProgress();
+        // 可樂 PDF → multi-order flow; 味全 PDF → single-order flow (same as image)
+        if (pdf && currentBrand === "coke") {
+          fillPdfResults(data.orders || []);
+          setStatus(`PDF 解析完成，共找到 ${(data.orders || []).length} 張調撥單。`, "ok");
+        } else {
+          fillResult(data);
+          setStatus("辨識完成，請確認後按「加入本批匯總」。", "ok");
+        }
+      }, 500);
+    } catch (err) {
+      clearInterval(ticker);
+      hideProgress();
+      setStatus("辨識失敗：" + err.message, "error");
+    } finally {
+      document.getElementById("btn-ocr").disabled = false;
+    }
+  }
+
+  function fillResult(data) {
+    document.getElementById("inp-date").value      = data.date      || "";
+    document.getElementById("inp-warehouse").value = data.warehouse || "";
+    document.getElementById("inp-shipment").value  = data.shipment_no || "";
+
+    document.getElementById("bar-date").textContent      = data.date      || "—";
+    document.getElementById("bar-warehouse").textContent = data.warehouse || "—";
+
+    // Show/hide 裝運單號 row (only relevant for 可樂)
+    document.getElementById("shipment-field").style.display =
+      currentBrand === "coke" ? "" : "none";
+
+    const tbody = document.getElementById("items-body");
+    tbody.innerHTML = "";
+    (data.matched_items || []).forEach(item => appendItemRow(item.code, item.qty, item.pallets));
+
+    const unmatched = data.unmatched_items || [];
+    const section   = document.getElementById("unmatched-section");
+    if (unmatched.length > 0) {
+      document.getElementById("unmatched-list").innerHTML =
+        unmatched.map(u => `${u.code}（${u.qty} 件 / ${u.pallets || 0} 板）`).join("、");
+      section.style.display = "block";
+    } else {
+      section.style.display = "none";
+    }
+
+    document.getElementById("result-card").style.display = "block";
+    document.getElementById("result-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function fillPdfResults(orders) {
+    _pdfOrders = orders;
+
+    const matchedCount = orders.filter(o => o.matched_items.length > 0).length;
+    document.getElementById("pdf-order-count").textContent = orders.length;
+    document.getElementById("pdf-match-count").textContent = matchedCount;
+
+    const tbody = document.getElementById("pdf-orders-body");
+    tbody.innerHTML = "";
+
+    const allUnmatched = [];
+    orders.forEach(order => {
+      const tr  = document.createElement("tr");
+      const matched   = order.matched_items  || [];
+      const unmatched = order.unmatched_items || [];
+
+      const matchedText = matched.length
+        ? matched.map(i => `${i.code} ×${i.qty.toLocaleString()}`).join("、")
+        : "—";
+      const unmatchedText = unmatched.length
+        ? unmatched.map(i => `${i.code} ×${i.qty.toLocaleString()}`).join("、")
+        : "";
+
+      const tdDate = document.createElement("td");
+      tdDate.style.fontFamily = "Consolas,monospace";
+      tdDate.textContent = order.date || "—";
+
+      const tdWh = document.createElement("td");
+      tdWh.textContent = order.warehouse || "—";
+
+      const tdMatched = document.createElement("td");
+      tdMatched.style.fontSize = ".8rem";
+      tdMatched.textContent = matchedText;
+
+      const tdUnmatched = document.createElement("td");
+      tdUnmatched.style.fontSize = ".8rem";
+      tdUnmatched.style.color = "#7a5500";
+      tdUnmatched.textContent = unmatchedText;
+
+      tr.append(tdDate, tdWh, tdMatched, tdUnmatched);
+      tbody.appendChild(tr);
+
+      unmatched.forEach(u => allUnmatched.push(`${u.code}（${u.qty} 件）`));
+    });
+
+    const unmatchedSection = document.getElementById("pdf-unmatched-section");
+    if (allUnmatched.length > 0) {
+      document.getElementById("pdf-unmatched-list").textContent = allUnmatched.join("、");
+      unmatchedSection.style.display = "block";
+    } else {
+      unmatchedSection.style.display = "none";
+    }
+
+    document.getElementById("pdf-result-card").style.display = "block";
+    document.getElementById("pdf-result-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function addAllPdfOrders() {
+    const valid = _pdfOrders.filter(o => (o.matched_items || []).length > 0);
+    if (!valid.length) {
+      setStatus("沒有含有效品項的調撥單可加入。", "error");
+      return;
+    }
+    valid.forEach(order => {
+      session.push({
+        date:      order.date,
+        warehouse: order.warehouse,
+        items:     (order.matched_items || []).map(i => ({ code: i.code, qty: i.qty })),
+      });
+    });
+    renderSession();
+    document.getElementById("pdf-result-card").style.display = "none";
+    clearUpload();
+    setStatus("", "");
+    document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function appendItemRow(code = "", qty = "", pallets = 0) {
+    const brand = B();
+    const tbody = document.getElementById("items-body");
+    const tr    = document.createElement("tr");
+
+    // 品號 select
+    const tdCode = document.createElement("td");
+    tdCode.className = "code";
+    const sel = document.createElement("select");
+    sel.style.cssText = "border:1px solid #ccc;border-radius:4px;padding:3px 6px;font-size:.85rem;font-family:Consolas,monospace;color:#cc0000;font-weight:700;width:150px";
+    brand.codes.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      if (c === code) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    tdCode.appendChild(sel);
+
+    if (brand.sharedCodes.has(sel.value)) tr.classList.add("shared-row");
+    sel.onchange = () => {
+      if (brand.sharedCodes.has(sel.value)) tr.classList.add("shared-row");
+      else tr.classList.remove("shared-row");
+    };
+
+    // 數量
+    const tdQty = document.createElement("td");
+    tdQty.style.textAlign = "right";
+    const qtyInp = document.createElement("input");
+    qtyInp.type = "number"; qtyInp.min = "0"; qtyInp.step = "1";
+    qtyInp.value = qty || ""; qtyInp.placeholder = "0";
+    tdQty.appendChild(qtyInp);
+
+    // 調撥棧板（參考）
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallets-ref";
+    tdPal.textContent = pallets > 0 ? pallets : "—";
+
+    // 刪除
+    const tdDel = document.createElement("td");
+    tdDel.style.textAlign = "center";
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "刪除"; delBtn.className = "btn-icon";
+    delBtn.onclick = () => tr.remove();
+    tdDel.appendChild(delBtn);
+
+    tr.append(tdCode, tdQty, tdPal, tdDel);
+    tbody.appendChild(tr);
+  }
+
+  function addItemRow() { appendItemRow(); }
+
+  // ── Session management ───────────────────────────────────────────────────
+  function addToSession() {
+    const date      = document.getElementById("inp-date").value.trim();
+    const warehouse = document.getElementById("inp-warehouse").value.trim();
+
+    const items = [];
+    document.querySelectorAll("#items-body tr").forEach(tr => {
+      const code = tr.querySelector("select")?.value;
+      const qty  = parseInt(tr.querySelector("input[type=number]")?.value) || 0;
+      if (code && qty > 0) items.push({ code, qty });
+    });
+
+    if (!items.length) {
+      setStatus("沒有有效的品項數量，請先確認辨識結果。", "error");
+      return;
+    }
+
+    session.push({ date, warehouse, items });
+    renderSession();
+    document.getElementById("result-card").style.display = "none";
+    clearUpload();
+    document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });
+    setStatus("", "");
+  }
+
+  function removeOrder(idx) {
+    session.splice(idx, 1);
+    renderSession();
+  }
+
+  function clearSession() {
+    if (!confirm("確定要清除所有調撥單資料嗎？")) return;
+    session = [];
+    renderSession();
+  }
+
+  // ── Pallet calculation ────────────────────────────────────────────────────
+  function calcPallets(qtyByCode) { return B().calcPallets(qtyByCode); }
+
+  // ── Full preview table rendering ─────────────────────────────────────────
+  function renderSession() {
+    const empty      = document.getElementById("session-empty");
+    const tableOuter = document.getElementById("full-table-outer");
+    const exportArea = document.getElementById("export-area");
+    const legend     = document.getElementById("shared-legend");
+
+    if (session.length === 0) {
+      empty.style.display      = "block";
+      tableOuter.style.display = "none";
+      exportArea.style.display = "none";
+      legend.style.display     = "none";
+      return;
+    }
+
+    empty.style.display      = "none";
+    tableOuter.style.display = "block";
+    exportArea.style.display = "block";
+    legend.style.display     = B().showSharedLegend ? "flex" : "none";
+
+    _buildTableHead();
+    _buildTableBody();
+    _buildTableFoot();
+    _updateExportSummary();
+  }
+
+  function _buildTableHead() {
+    const brand = B();
+    const thead = document.getElementById("preview-thead");
+    thead.innerHTML = "";
+    const tr = document.createElement("tr");
+
+    const thDate = _th("日期", "th-meta col-date"); thDate.style.textAlign = "center";
+    const thRem  = _th("所別/備註", "th-meta col-remark"); thRem.style.textAlign = "center";
+    tr.append(thDate, thRem);
+
+    brand.codes.forEach(code => {
+      const cls = "col-product" + (brand.sharedCodes.has(code) ? " col-shared" : "");
+      tr.appendChild(_th(brand.labels[code], cls));
+    });
+    tr.appendChild(_th("棧板", "th-meta col-pallet"));
+    tr.appendChild(_th("", "col-action"));
+    thead.appendChild(tr);
+  }
+
+  function _buildTableBody() {
+    const tbody = document.getElementById("preview-body");
+    tbody.innerHTML = "";
+    session.forEach((entry, idx) => tbody.appendChild(_buildRow(entry, idx)));
+  }
+
+  function _buildTableFoot() {
+    const brand = B();
+    const tfoot = document.getElementById("preview-tfoot");
+    tfoot.innerHTML = "";
+    const tr = document.createElement("tr");
+
+    const tdLabel = document.createElement("td");
+    tdLabel.colSpan = 2; tdLabel.textContent = "合計";
+    tdLabel.className = "col-date"; tdLabel.style.textAlign = "center";
+    tdLabel.style.fontFamily = "inherit";
+    tr.appendChild(tdLabel);
+
+    const totals = _calcTotals();
+    brand.codes.forEach(code => {
+      const td = document.createElement("td");
+      td.textContent = totals[code] || "";
+      td.style.textAlign = "center";
+      if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
+      tr.appendChild(td);
+    });
+
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallet-cell";
+    tdPal.textContent = calcPallets(totals) || "";
+    tr.appendChild(tdPal);
+    tr.appendChild(document.createElement("td"));
+    tfoot.appendChild(tr);
+  }
+
+  function _buildRow(entry, idx) {
+    const brand = B();
+    const tr = document.createElement("tr");
+
+    const tdDate = document.createElement("td");
+    tdDate.className = "col-date meta-cell";
+    const dateInp = document.createElement("input");
+    dateInp.type = "text"; dateInp.value = entry.date || "";
+    dateInp.onchange = () => { session[idx].date = dateInp.value; _updateExportSummary(); };
+    tdDate.appendChild(dateInp);
+
+    const tdRem = document.createElement("td");
+    tdRem.className = "col-remark meta-cell";
+    const remWrap = document.createElement("div");
+    remWrap.style.cssText = "display:flex; align-items:center; gap:3px;";
+    const remInp = document.createElement("input");
+    remInp.type = "text"; remInp.value = entry.warehouse || "";
+    remInp.style.flex = "1";
+    remInp.onchange = () => { session[idx].warehouse = remInp.value; };
+    const remDelBtn = document.createElement("button");
+    remDelBtn.textContent = "✕"; remDelBtn.className = "btn-icon";
+    remDelBtn.style.cssText = "padding:2px 6px; flex-shrink:0;";
+    remDelBtn.onclick = () => removeOrder(idx);
+    remWrap.append(remInp, remDelBtn);
+    tdRem.appendChild(remWrap);
+
+    tr.append(tdDate, tdRem);
+
+    const qtyMap = {};
+    (entry.items || []).forEach(i => { qtyMap[i.code] = i.qty; });
+
+    brand.codes.forEach(code => {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.min = "0"; inp.step = "1";
+      inp.value = qtyMap[code] || "";
+      inp.oninput = () => {
+        const q = parseInt(inp.value) || 0;
+        const iIdx = session[idx].items.findIndex(i => i.code === code);
+        if (q > 0) {
+          if (iIdx >= 0) session[idx].items[iIdx].qty = q;
+          else session[idx].items.push({ code, qty: q });
+        } else {
+          if (iIdx >= 0) session[idx].items.splice(iIdx, 1);
+        }
+        const currentQty = {};
+        session[idx].items.forEach(i => { currentQty[i.code] = i.qty; });
+        const palCell = tr.querySelector(".pallet-cell");
+        if (palCell) palCell.textContent = calcPallets(currentQty) || "";
+        _buildTableFoot();
+        _updateExportSummary();
+      };
+      inp.onfocus = () => inp.style.background = "#fffde7";
+      inp.onblur  = () => inp.style.background = "transparent";
+      if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+
+    const tdPal = document.createElement("td");
+    tdPal.className = "pallet-cell";
+    tdPal.textContent = calcPallets(qtyMap) || "";
+    tr.appendChild(tdPal);
+
+    const tdAct = document.createElement("td");
+    tdAct.className = "col-action";
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "✕"; delBtn.className = "btn-icon";
+    delBtn.style.padding = "2px 7px";
+    delBtn.onclick = () => removeOrder(idx);
+    tdAct.appendChild(delBtn);
+    tr.appendChild(tdAct);
+
+    return tr;
+  }
+
+  function _calcTotals() {
+    const brand = B();
+    const totals = {};
+    brand.codes.forEach(c => { totals[c] = 0; });
+    session.forEach(entry => {
+      (entry.items || []).forEach(({ code, qty }) => {
+        if (totals.hasOwnProperty(code)) totals[code] += qty;
+      });
+    });
+    return totals;
+  }
+
+  function _updateExportSummary() {
+    document.getElementById("order-count").textContent = session.length;
+    const totals = _calcTotals();
+    const top5 = Object.entries(totals)
+      .filter(([, q]) => q > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([c, q]) => `${c}: ${q.toLocaleString()}`)
+      .join("　");
+    document.getElementById("total-qty-summary").textContent =
+      top5 ? `前五大品項：${top5}` : "";
+  }
+
+  function _th(text, cls) {
+    const th = document.createElement("th");
+    th.textContent = text;
+    if (cls) th.className = cls;
+    return th;
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  async function exportExcel() {
+    if (!session.length) return;
+    const brand = B();
+    setStatus("匯出中…", "ok");
+    try {
+      const res = await fetch(`${API}${brand.exportEndpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: session }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download  = brand.exportName();
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("匯出成功！", "ok");
+    } catch (err) {
+      setStatus("匯出失敗：" + err.message, "error");
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(msg, type) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className   = type || "";
+    el.style.display = msg ? "block" : "none";
+  }
+
+  // Init
+  renderSession();
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
   const dropZone = document.getElementById("drop-zone");

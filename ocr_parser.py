@@ -379,3 +379,172 @@ def _extract_code_from_cell(text: str) -> str:
     if m:
         return m.group(1)
     return ""
+
+
+# ── 味全出貨單解析 ────────────────────────────────────────────
+
+def parse_weichuan_transfer_order(image_path: str) -> dict:
+    """Parse 味全 出貨單 image (JPG/PNG).
+    Returns dict: {date, warehouse, matched_items, unmatched_items}
+    matched_items: [{code, qty}] where code ∈ {"黑咖啡_全台","黑咖啡_4入","拿鐵_全台","拿鐵_4入"}
+    """
+    with open(image_path, "rb") as f:
+        content = f.read()
+
+    image    = vision.Image(content=content)
+    response = get_client().document_text_detection(image=image)
+
+    if response.error.message:
+        raise RuntimeError(f"Vision API error: {response.error.message}")
+
+    return _parse_weichuan_ocr_response(response)
+
+
+def parse_weichuan_pdf(pdf_path: str) -> dict:
+    """Parse 味全 出貨單 as scanned PDF (converts to image, then OCR)."""
+    from pdf2image import convert_from_path
+    import tempfile, os
+
+    images = convert_from_path(pdf_path, dpi=200)
+    if not images:
+        return {"date": "", "warehouse": "", "matched_items": [], "unmatched_items": []}
+
+    # Use the first page (one order per file)
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        images[0].save(tmp.name, format="PNG")
+        tmp_path = tmp.name
+
+    try:
+        return parse_weichuan_transfer_order(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+def _parse_weichuan_ocr_response(response) -> dict:
+    full_text = response.full_text_annotation.text
+    items     = _extract_items(response)
+    rows      = _group_by_y(items, tol=15)
+
+    date           = _extract_weichuan_date(full_text)
+    receiving_unit = _extract_weichuan_receiving_unit(full_text)
+    doc_no         = _extract_weichuan_doc_no(full_text)
+    warehouse      = f"{receiving_unit}{doc_no}".strip()
+
+    products = _parse_weichuan_rows(rows, full_text)
+
+    return {
+        "date":            date,
+        "warehouse":       warehouse,
+        "matched_items":   products,
+        "unmatched_items": [],
+    }
+
+
+def _roc_to_gregorian(roc_date: str) -> str:
+    """Convert ROC date string (e.g. '115.04.23') to '2026/04/23'."""
+    parts = roc_date.split(".")
+    if len(parts) != 3:
+        return roc_date
+    try:
+        year = int(parts[0]) + 1911
+        return f"{year}/{parts[1]}/{parts[2]}"
+    except ValueError:
+        return roc_date
+
+
+def _extract_weichuan_date(text: str) -> str:
+    """Extract 預計到貨日 and convert from ROC to Gregorian."""
+    # Try inline: 預計到貨日：115.04.23
+    m = re.search(r'預計到貨日[：:\s]+(\d{2,3}\.\d{2}\.\d{2})(?!-)', text)
+    if m:
+        return _roc_to_gregorian(m.group(1))
+    # Try multi-line: 預計到貨日 on one line, date on next
+    m = re.search(r'預計到貨日[：:\s]*\n+\s*(\d{2,3}\.\d{2}\.\d{2})(?!-)', text)
+    if m:
+        return _roc_to_gregorian(m.group(1))
+    # Fallback: first ROC date without dash (avoid matching the 單據編號)
+    # Only match if NOT preceded by another number-dot pattern
+    for seg in re.finditer(r'(\d{2,3}\.\d{2}\.\d{2})(?!-)', text):
+        return _roc_to_gregorian(seg.group(1))
+    return ""
+
+
+def _extract_weichuan_receiving_unit(text: str) -> str:
+    """Extract 收貨單位 name (e.g. '味全斗六廠')."""
+    # Pattern: 收貨單位：<name> — stop at double-space, tab, newline, or known next field
+    m = re.search(r'收貨單位[：:\s]*([^\n\t]+?)(?:\s{2,}|\t|\n|出貨日期|$)', text)
+    if m:
+        val = m.group(1).strip()
+        # Drop trailing noise characters
+        val = re.sub(r'[\s：:]+$', '', val)
+        return val
+    return ""
+
+
+def _extract_weichuan_doc_no(text: str) -> str:
+    """Extract 單據編號 (e.g. '115.04.23-02')."""
+    m = re.search(r'單據編號[：:\s]*\n*\s*(\d{2,3}\.\d{2}\.\d{2}-\d+)', text)
+    if m:
+        return m.group(1)
+    # Fallback: any XXX.XX.XX-XX pattern
+    m = re.search(r'\b(\d{3}\.\d{2}\.\d{2}-\d+)\b', text)
+    return m.group(1) if m else ""
+
+
+def _parse_weichuan_rows(rows: list, full_text: str) -> list:
+    """Extract products from coordinate-grouped OCR rows."""
+    # Find table header row
+    header_idx = qty_x = None
+    for i, row in enumerate(rows):
+        text = "".join(item["text"] for item in row)
+        if "品名" in text and ("數量" in text or "序號" in text):
+            header_idx = i
+            qty_x = next((item["x"] for item in row if "數量" in item["text"]), None)
+            break
+
+    result = []
+    scan_rows = rows[header_idx + 1:] if header_idx is not None else rows
+
+    for row in scan_rows:
+        row_text = " ".join(item["text"] for item in row)
+        if any(kw in row_text for kw in ["合計", "本車", "承運", "收貨單位", "警檢", "備註", "貨運行"]):
+            continue
+        code = _detect_weichuan_product(row_text)
+        if not code:
+            continue
+        qty = _extract_weichuan_qty(row, row_text, qty_x)
+        if qty > 0:
+            result.append({"code": code, "qty": qty})
+
+    return result
+
+
+def _detect_weichuan_product(text: str) -> str:
+    """Map product name text to internal code."""
+    has_4ru = "4入" in text
+    if "拿鐵" in text:
+        return "拿鐵_4入" if has_4ru else "拿鐵_全台"
+    if "黑咖啡" in text:
+        return "黑咖啡_4入" if has_4ru else "黑咖啡_全台"
+    return ""
+
+
+def _extract_weichuan_qty(row_items: list, row_text: str, qty_x=None) -> int:
+    """Extract quantity (箱 count) from a product row."""
+    # Prefer explicit "N 箱" pattern
+    m = re.search(r'([\d,]+)\s*箱', row_text)
+    if m:
+        return int(m.group(1).replace(",", ""))
+    # Coordinate-based fallback
+    candidates = []
+    for item in row_items:
+        clean = item["text"].replace(",", "").strip()
+        if re.match(r'^\d+$', clean):
+            n = int(clean)
+            if n >= 1:
+                candidates.append((item["x"], n))
+    if not candidates:
+        return 0
+    if qty_x:
+        return min(candidates, key=lambda c: abs(c[0] - qty_x))[1]
+    return max(c[1] for c in candidates)
