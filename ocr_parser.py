@@ -551,15 +551,18 @@ def _parse_weichuan_rows(rows: list, full_text: str) -> list:
         return result
 
     # ── Pass 2: text-based fallback ───────────────────────────────────────
+    # Only trust "N 箱" as qty source — raw numbers include "(340ml)" noise.
     lines = full_text.split("\n")
     for i, line in enumerate(lines):
         code = _detect_weichuan_product(line)
         if not code or code in found:
             continue
-        # Try same line first, then next line
-        qty = _extract_weichuan_qty_from_text(line)
-        if qty == 0 and i + 1 < len(lines):
-            qty = _extract_weichuan_qty_from_text(lines[i + 1])
+        # Search current line + next 2 lines for "N 箱"
+        qty = 0
+        for j in range(i, min(i + 3, len(lines))):
+            qty = _extract_weichuan_qty_from_text(lines[j])
+            if qty:
+                break
         if qty > 0:
             result.append({"code": code, "qty": qty})
             found.add(code)
@@ -568,13 +571,12 @@ def _parse_weichuan_rows(rows: list, full_text: str) -> list:
 
 
 def _extract_weichuan_qty_from_text(text: str) -> int:
-    """Extract quantity from a plain text string (箱 pattern or largest number ≥100)."""
+    """Extract quantity using only the '箱' unit marker.
+    Never falls back to raw number guessing — product names contain
+    '(340ml)' which would produce a wrong qty of 340.
+    """
     m = re.search(r'([\d,]+)\s*箱', text)
-    if m:
-        return int(m.group(1).replace(",", ""))
-    nums = [int(n.replace(",", "")) for n in re.findall(r'[\d,]+', text)
-            if n.replace(",", "").isdigit() and int(n.replace(",", "")) >= 100]
-    return max(nums) if nums else 0
+    return int(m.group(1).replace(",", "")) if m else 0
 
 
 def _detect_weichuan_product(text: str) -> str:
