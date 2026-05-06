@@ -470,14 +470,21 @@ def _extract_weichuan_date(text: str) -> str:
 
 
 def _extract_weichuan_receiving_unit(text: str) -> str:
-    """Extract 收貨單位 name (e.g. '味全斗六廠')."""
-    # Pattern: 收貨單位：<name> — stop at double-space, tab, newline, or known next field
-    m = re.search(r'收貨單位[：:\s]*([^\n\t]+?)(?:\s{2,}|\t|\n|出貨日期|$)', text)
+    """Extract 收貨單位 name (e.g. '味全斗六廠').
+
+    When 收貨單位：and 出貨日期：are on the same OCR line the naive regex
+    captures '出貨日期' instead of the factory name.  We instead search
+    directly for the '味全XX廠' pattern, excluding the company header
+    ('味全食品工業…') and footer ('味全公司XX廠').
+    """
+    # Direct search: 味全 not followed by 食品 or 公司, ending in 廠
+    m = re.search(r'味全(?!食品|公司)(\S+廠)', text)
     if m:
-        val = m.group(1).strip()
-        # Drop trailing noise characters
-        val = re.sub(r'[\s：:]+$', '', val)
-        return val
+        return "味全" + m.group(1)
+    # Fallback: look on the line *after* 收貨單位：
+    m = re.search(r'收貨單位[：:][^\n]*\n\s*([^\n\t出貨]+?)(?:\s{2,}|\t|\n|出貨日期|$)', text)
+    if m:
+        return m.group(1).strip()
     return ""
 
 
@@ -492,8 +499,15 @@ def _extract_weichuan_doc_no(text: str) -> str:
 
 
 def _parse_weichuan_rows(rows: list, full_text: str) -> list:
-    """Extract products from coordinate-grouped OCR rows."""
-    # Find table header row
+    """Extract products from coordinate-grouped OCR rows.
+
+    Two-pass strategy:
+      1. Coordinate-based: group items by Y, match product+qty in same row.
+         When qty is missing from the product row, look ahead ±2 rows.
+      2. Text-based fallback: scan full_text lines for product keywords
+         and the "N 箱" pattern on the same or adjacent line.
+    """
+    # ── Pass 1: coordinate-based ──────────────────────────────────────────
     header_idx = qty_x = None
     for i, row in enumerate(rows):
         text = "".join(item["text"] for item in row)
@@ -502,21 +516,65 @@ def _parse_weichuan_rows(rows: list, full_text: str) -> list:
             qty_x = next((item["x"] for item in row if "數量" in item["text"]), None)
             break
 
-    result = []
+    SKIP_KW = {"合計", "本車", "承運", "收貨單位", "警檢", "備註", "貨運行"}
+    result   = []
+    found    = set()
     scan_rows = rows[header_idx + 1:] if header_idx is not None else rows
 
-    for row in scan_rows:
+    for i, row in enumerate(scan_rows):
         row_text = " ".join(item["text"] for item in row)
-        if any(kw in row_text for kw in ["合計", "本車", "承運", "收貨單位", "警檢", "備註", "貨運行"]):
+        if any(kw in row_text for kw in SKIP_KW):
             continue
         code = _detect_weichuan_product(row_text)
-        if not code:
+        if not code or code in found:
             continue
+
         qty = _extract_weichuan_qty(row, row_text, qty_x)
+        # If qty not on same row, look in adjacent rows (±2)
+        if qty == 0:
+            for offset in range(1, 3):
+                for delta in [offset, -offset]:
+                    adj = i + delta
+                    if 0 <= adj < len(scan_rows):
+                        adj_text = " ".join(item["text"] for item in scan_rows[adj])
+                        qty = _extract_weichuan_qty(scan_rows[adj], adj_text, qty_x)
+                        if qty:
+                            break
+                if qty:
+                    break
+
         if qty > 0:
             result.append({"code": code, "qty": qty})
+            found.add(code)
+
+    if result:
+        return result
+
+    # ── Pass 2: text-based fallback ───────────────────────────────────────
+    lines = full_text.split("\n")
+    for i, line in enumerate(lines):
+        code = _detect_weichuan_product(line)
+        if not code or code in found:
+            continue
+        # Try same line first, then next line
+        qty = _extract_weichuan_qty_from_text(line)
+        if qty == 0 and i + 1 < len(lines):
+            qty = _extract_weichuan_qty_from_text(lines[i + 1])
+        if qty > 0:
+            result.append({"code": code, "qty": qty})
+            found.add(code)
 
     return result
+
+
+def _extract_weichuan_qty_from_text(text: str) -> int:
+    """Extract quantity from a plain text string (箱 pattern or largest number ≥100)."""
+    m = re.search(r'([\d,]+)\s*箱', text)
+    if m:
+        return int(m.group(1).replace(",", ""))
+    nums = [int(n.replace(",", "")) for n in re.findall(r'[\d,]+', text)
+            if n.replace(",", "").isdigit() and int(n.replace(",", "")) >= 100]
+    return max(nums) if nums else 0
 
 
 def _detect_weichuan_product(text: str) -> str:
