@@ -6,9 +6,11 @@ from flask_cors import CORS
 from ocr_parser import (
     parse_transfer_order, parse_pdf_transfer_orders,
     parse_weichuan_transfer_order, parse_weichuan_pdf,
+    parse_vtl_transfer_order, parse_vtl_pdf,
 )
 from form_template import build_workbook
 from form_template_weichuan import build_weichuan_workbook
+from form_template_vtl import build_vtl_workbook
 
 app = Flask(__name__)
 CORS(app, origins=["https://markcqhsu.github.io"])
@@ -161,6 +163,63 @@ def export_weichuan():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="味全代工明細表.xlsx",
+    )
+
+
+@app.post("/ocr-vtl")
+def ocr_vtl():
+    """
+    Parse 維他露 調撥單 — accepts image (field 'image') or PDF (field 'file').
+    Returns: {orders: [{date, warehouse, matched_items, unmatched_items}, ...]}
+    Each order = one 營業部 block = one Excel row.
+    """
+    is_pdf = "file" in request.files
+    file   = request.files.get("file") or request.files.get("image")
+    if file is None:
+        return jsonify({"error": "no file field"}), 400
+    if file.filename == "":
+        return jsonify({"error": "empty filename"}), 400
+
+    suffix = ".pdf" if is_pdf else (os.path.splitext(file.filename)[1] or ".jpg")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        if is_pdf:
+            orders = parse_vtl_pdf(tmp_path)
+        else:
+            orders = parse_vtl_transfer_order(tmp_path)
+    except Exception:
+        return jsonify({"error": "OCR 處理失敗，請確認圖片格式"}), 500
+    finally:
+        os.unlink(tmp_path)
+
+    return jsonify({"orders": orders})
+
+
+@app.post("/export-vtl")
+def export_vtl():
+    """
+    Build 維他露代工明細表 Excel.
+    Body JSON: {"rows": [{date, warehouse, items:[{code,qty}]}, ...]}
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    rows = data.get("rows", [])
+
+    if not rows:
+        return jsonify({"error": "no data"}), 400
+
+    try:
+        xlsx_bytes = build_vtl_workbook(rows)
+    except Exception:
+        return jsonify({"error": "Excel 產生失敗"}), 500
+
+    return send_file(
+        __import__("io").BytesIO(xlsx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="維他露代工明細表.xlsx",
     )
 
 

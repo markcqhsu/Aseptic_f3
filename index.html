@@ -319,7 +319,8 @@
     }
     .brand-btn.active-coke   { border-color: #c00; background: #c00; color: #fff; }
     .brand-btn.active-wc     { border-color: #e67e00; background: #e67e00; color: #fff; }
-    .brand-btn:hover:not(.active-coke):not(.active-wc) { border-color: #aaa; background: #f5f5f5; }
+    .brand-btn.active-vtl    { border-color: #1a7a3c; background: #1a7a3c; color: #fff; }
+    .brand-btn:hover:not(.active-coke):not(.active-wc):not(.active-vtl) { border-color: #aaa; background: #f5f5f5; }
 
     /* ── Export summary ── */
     .export-summary {
@@ -339,7 +340,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.6.6</span>
+  <span class="version-badge">v1.7.0</span>
 </header>
 
 <div class="container">
@@ -349,6 +350,7 @@
     <label>品牌：</label>
     <button class="brand-btn active-coke" id="btn-brand-coke" onclick="switchBrand('coke')">可樂</button>
     <button class="brand-btn"             id="btn-brand-wc"   onclick="switchBrand('wc')">味全</button>
+    <button class="brand-btn"             id="btn-brand-vtl"  onclick="switchBrand('vtl')">維他露</button>
   </div>
 
   <!-- Step 1: 上傳調撥單 -->
@@ -488,6 +490,30 @@
     </div>
   </div>
 
+  <!-- 維他露 multi-block result card -->
+  <div class="card" id="vtl-result-card" style="display:none">
+    <h2><span class="step-badge">2</span>維他露辨識結果</h2>
+    <div style="background:#e8f4ec; border:1px solid #8cc9a0; border-radius:7px; padding:9px 16px; margin-bottom:14px; font-size:.88rem;">
+      共辨識出 <strong id="vtl-block-count">0</strong> 個訂單區塊，確認後按「全部加入匯總」。
+    </div>
+    <div class="table-wrap">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width:110px">排出日期</th>
+            <th style="width:220px">所別/備註</th>
+            <th>品號與數量</th>
+            <th style="width:60px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="vtl-orders-body"></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="addAllVtlOrders()">全部加入匯總</button>
+    </div>
+  </div>
+
   <!-- Step 3: 批次匯總預覽 -->
   <div class="card" id="session-card" style="max-width:none; width:100%">
     <h2><span class="step-badge">3</span>批次匯總預覽</h2>
@@ -588,6 +614,20 @@
       exportLabel:    "匯出代工明細表 Excel",
       showSharedLegend: false,
     },
+    vtl: {
+      name: "維他露",
+      codes: [],
+      labels: {},
+      sharedCodes: new Set(),
+      calcPallets() { return 0; },
+      ocrEndpoint:    "/ocr-vtl",
+      ocrPdfEndpoint: "/ocr-vtl",
+      exportEndpoint: "/export-vtl",
+      exportName:     () => `維他露代工明細表_${_today()}.xlsx`,
+      exportLabel:    "匯出代工明細表 Excel",
+      showSharedLegend: false,
+      multiBlock: true,
+    },
   };
 
   function _today() { return new Date().toISOString().slice(0,10).replace(/-/g,""); }
@@ -609,6 +649,8 @@
       "brand-btn" + (key === "coke" ? " active-coke" : "");
     document.getElementById("btn-brand-wc").className =
       "brand-btn" + (key === "wc" ? " active-wc" : "");
+    document.getElementById("btn-brand-vtl").className =
+      "brand-btn" + (key === "vtl" ? " active-vtl" : "");
     clearUpload();
     renderSession();
     // Update export button label
@@ -674,6 +716,7 @@
     document.getElementById("btn-clear").disabled = true;
     document.getElementById("result-card").style.display     = "none";
     document.getElementById("pdf-result-card").style.display = "none";
+    document.getElementById("vtl-result-card").style.display = "none";
     hideProgress();
     setStatus("", "");
   }
@@ -739,8 +782,11 @@
       setProgressStep(3);
       setTimeout(() => {
         hideProgress();
-        // 可樂 PDF → multi-order flow; 味全 PDF → single-order flow (same as image)
-        if (pdf && currentBrand === "coke") {
+        // 可樂 PDF → multi-order flow; 維他露 → always multi-block; 味全 → single-order
+        if (currentBrand === "vtl") {
+          fillVtlResults(data.orders || []);
+          setStatus(`辨識完成，共找到 ${(data.orders || []).length} 個訂單區塊。`, "ok");
+        } else if (pdf && currentBrand === "coke") {
           fillPdfResults(data.orders || []);
           setStatus(`PDF 解析完成，共找到 ${(data.orders || []).length} 張調撥單。`, "ok");
         } else {
@@ -864,6 +910,68 @@
     });
     renderSession();
     document.getElementById("pdf-result-card").style.display = "none";
+    clearUpload();
+    setStatus("", "");
+    document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  // ── 維他露 multi-block result display ──────────────────────────────────────
+  let _vtlOrders = [];
+
+  function fillVtlResults(orders) {
+    _vtlOrders = orders;
+    const card = document.getElementById("vtl-result-card");
+    const tbody = document.getElementById("vtl-orders-body");
+    tbody.innerHTML = "";
+
+    orders.forEach((order, idx) => {
+      const tr = document.createElement("tr");
+      const matched = order.matched_items || [];
+
+      const tdDate = document.createElement("td");
+      tdDate.textContent = order.date || "—";
+      tdDate.style.fontFamily = "Consolas,monospace";
+
+      const tdWh = document.createElement("td");
+      tdWh.textContent = order.warehouse || "—";
+
+      const tdItems = document.createElement("td");
+      tdItems.style.fontSize = ".82rem";
+      tdItems.innerHTML = matched.length
+        ? matched.map(i => `<span style="display:inline-block;margin:1px 4px;padding:1px 6px;background:#eef2ff;border-radius:4px;font-family:Consolas,monospace">${i.code} ×${i.qty.toLocaleString()}</span>`).join("")
+        : "<em style='color:#999'>無品項</em>";
+
+      const tdDel = document.createElement("td");
+      tdDel.style.textAlign = "center";
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "移除"; delBtn.className = "btn-icon";
+      delBtn.onclick = () => { _vtlOrders.splice(idx, 1); fillVtlResults(_vtlOrders); };
+      tdDel.appendChild(delBtn);
+
+      tr.append(tdDate, tdWh, tdItems, tdDel);
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("vtl-block-count").textContent = orders.length;
+    card.style.display = "block";
+    card.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function addAllVtlOrders() {
+    const valid = _vtlOrders.filter(o => (o.matched_items || []).length > 0);
+    if (!valid.length) {
+      setStatus("沒有有效訂單區塊可加入。", "error");
+      return;
+    }
+    valid.forEach(order => {
+      session.push({
+        date:      order.date,
+        warehouse: order.warehouse,
+        items:     (order.matched_items || []).map(i => ({ code: i.code, qty: i.qty })),
+      });
+    });
+    renderSession();
+    document.getElementById("vtl-result-card").style.display = "none";
     clearUpload();
     setStatus("", "");
     document.getElementById("session-card").scrollIntoView({ behavior: "smooth" });

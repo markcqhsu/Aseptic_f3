@@ -608,3 +608,182 @@ def _extract_weichuan_qty(row_items: list, row_text: str, qty_x=None) -> int:
     if qty_x:
         return min(candidates, key=lambda c: abs(c[0] - qty_x))[1]
     return max(c[1] for c in candidates)
+
+
+# ── 維他露 section ──────────────────────────────────────────────────────────
+
+_VTL_CUSTOMER_FIXES = {
+    "員林中食": "員林中倉",
+    "貝林中食": "員林中倉",
+    "貝林中倉": "員林中倉",
+}
+
+
+def _normalize_vtl_code(raw: str) -> str:
+    """
+    Convert OCR product code to template format.
+    e.g. "JDP05901A61" → "JDP0590 1A61"
+    Also corrects common OCR char confusions at digit positions (3-6).
+    """
+    code = re.sub(r"^\d+-", "", raw.strip())
+    chars = list(code)
+    for i in range(3, min(7, len(chars))):
+        if chars[i] == "O": chars[i] = "0"
+        if chars[i] == "S": chars[i] = "5"
+        if chars[i] == "I": chars[i] = "1"
+        if chars[i] == "l": chars[i] = "1"
+    code = "".join(chars)
+    if len(code) >= 11:
+        return code[:7] + " " + code[7:]
+    return code
+
+
+def _parse_vtl_qty(text: str) -> int:
+    """
+    Parse printed quantity from an OCR line, ignoring appended handwriting.
+
+    Handles:
+      "2702/27"  → 270   (handwriting "2/27" glued to "270")
+      "1.4306"   → 1430  (comma→period, "1,430" misread)
+      "520 25"   → 520   (trailing handwriting after space)
+      "540"      → 540
+    """
+    text = text.strip()
+    # Handwriting appended as "N/DD" — stop before single-digit-then-slash
+    m = re.match(r"^(\d+?)(?=[1-9]/\d{2})", text)
+    if m and len(m.group(1)) >= 2:
+        return int(m.group(1))
+    # Thousands separator misread as decimal "1.430"
+    m = re.match(r"^(\d+)\.(\d{3})", text)
+    if m:
+        return int(m.group(1) + m.group(2))
+    # Comma thousands separator "1,430"
+    m = re.match(r"^(\d+),(\d{3})", text)
+    if m:
+        return int(m.group(1) + m.group(2))
+    # Plain number (take leading digits, ignore trailing noise)
+    m = re.match(r"^(\d+)", text)
+    if m:
+        return int(m.group(1))
+    return 0
+
+
+def _parse_vtl_blocks(full_text: str) -> list:
+    """
+    Split OCR text of a 維他露 調撥單 page into order blocks.
+    Each block → one row in the 代工明細表.
+    Returns list of {date, warehouse, matched_items, unmatched_items}.
+    """
+    raw_blocks = re.split(r"(?=\d+\s+營業部)", full_text)
+    results = []
+
+    for block in raw_blocks:
+        if "營業部" not in block:
+            continue
+        lines = [l.strip() for l in block.split("\n") if l.strip()]
+
+        date = ""
+        order_no = ""
+        destination = ""
+        items = []
+
+        # Extract date (排出日期) and order number from line containing VR1-
+        for line in lines:
+            m = re.search(r"(\d{2}/\d{2}/\d{2})\s+VR1?-(\d+)", line)
+            if m:
+                parts = m.group(1).split("/")
+                date = f"20{parts[0]}/{parts[1]}/{parts[2]}"
+                order_no = f"VSR-{m.group(2)}"
+                break
+
+        # Extract destination: first meaningful line after VR1- line
+        found_vr = False
+        for line in lines:
+            if re.search(r"VR1?-\d+", line):
+                found_vr = True
+                continue
+            if not found_vr:
+                continue
+            if re.match(r"^DP\d+", line):     continue
+            if re.match(r"^\d{2}/\d{2}/\d{2}", line): continue
+            if re.match(r"^SM[A-Z0-9]+", line): continue
+            if re.match(r"^\d+\s*營業部", line): continue
+            if re.match(r"^備註", line):        continue
+            if "(" in line or "宏" in line:    continue
+            # Must look like a Chinese location name
+            if re.search(r"[一-鿿]", line) and len(line) >= 2:
+                destination = _VTL_CUSTOMER_FIXES.get(line, line)
+                break
+
+        # Extract items: lines matching "N-PRODUCTCODE ..."
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            m = re.match(r"\d+-([A-Z]{3}[\dOSIl]{4}\w+)", line)
+            if m:
+                raw_code = m.group(1)
+                normalized = _normalize_vtl_code(raw_code)
+                qty = 0
+                # Scan ahead up to 5 lines for CIN/CTN followed by quantity
+                for j in range(i, min(i + 6, len(lines))):
+                    # Inline: "CIN 2702/27"
+                    inline = re.search(r"(?:CIN|CTN)\s+([\d,\./]+)", lines[j])
+                    if inline:
+                        qty = _parse_vtl_qty(inline.group(1))
+                        break
+                    # Standalone CIN/CTN on its own line
+                    if re.match(r"^(?:CIN|CTN)$", lines[j]):
+                        # Look ahead up to 3 lines for the quantity
+                        for k in range(j + 1, min(j + 4, len(lines))):
+                            candidate = _parse_vtl_qty(lines[k])
+                            if candidate > 0:
+                                qty = candidate
+                                break
+                        break
+                if qty > 0:
+                    items.append({"code": normalized, "qty": qty})
+            i += 1
+
+        if items:
+            wh = (destination + order_no) if destination else order_no
+            matched = [{"code": it["code"], "qty": it["qty"]} for it in items]
+            results.append({
+                "date":            date,
+                "warehouse":       wh,
+                "matched_items":   matched,
+                "unmatched_items": [],
+            })
+
+    return results
+
+
+def parse_vtl_transfer_order(image_path: str) -> list:
+    """Parse a 維他露 調撥單 image. Returns list of order blocks."""
+    with open(image_path, "rb") as f:
+        content = f.read()
+    client = get_client()
+    image = vision.Image(content=content)
+    response = client.document_text_detection(image=image)
+    if response.error.message:
+        raise RuntimeError(response.error.message)
+    return _parse_vtl_blocks(response.full_text_annotation.text)
+
+
+def parse_vtl_pdf(pdf_path: str) -> list:
+    """Parse a 維他露 PDF (multiple pages). Returns all order blocks."""
+    import tempfile
+    from pdf2image import convert_from_path
+
+    images = convert_from_path(pdf_path)
+    all_blocks = []
+    for img in images:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            img.save(tmp.name, "PNG")
+            tmp_path = tmp.name
+        try:
+            blocks = parse_vtl_transfer_order(tmp_path)
+            all_blocks.extend(blocks)
+        finally:
+            import os as _os
+            _os.unlink(tmp_path)
+    return all_blocks
