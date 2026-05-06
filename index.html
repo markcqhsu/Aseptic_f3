@@ -253,6 +253,13 @@
     .preview-table .col-product { min-width: 54px; max-width: 54px; width: 54px; }
     .preview-table .col-pallet  { min-width: 52px; max-width: 52px; width: 52px; }
     .preview-table .col-action  { min-width: 44px; max-width: 44px; width: 44px; text-align: center; }
+    .preview-table .vtl-prod-col { min-width: 80px; max-width: 80px; width: 80px; }
+    .preview-table th.vtl-prod-col { color: #b3e5fc; background: #1a3c6e; font-size: .72rem; }
+    .preview-table .vtl-pal-col  { min-width: 52px; max-width: 52px; width: 52px; }
+    .preview-table th.vtl-pal-col { background: #1a5a2c; color: #b9f6ca; font-size: .70rem; }
+    .preview-table td.vtl-pallet-cell { background: #e8f5e9; text-align: center; font-size: .85rem; }
+    .preview-table tfoot td.vtl-pallet-cell { background: #c8e6c9; font-weight: 700; }
+    .preview-table tbody tr:hover td.vtl-pallet-cell { background: #d4edda; }
 
     /* Product code header in red */
     .preview-table th.col-product { color: #ffcdd2; }
@@ -340,7 +347,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.7.0</span>
+  <span class="version-badge">v1.7.1</span>
 </header>
 
 <div class="container">
@@ -628,6 +635,46 @@
       showSharedLegend: false,
       multiBlock: true,
     },
+  };
+
+  // VTL pallet formula groups — mirrors Excel columns CO-CU formulas
+  // Each group: qty of all codes summed, then divided by divisor
+  // Codes are normalized (no spaces), matching template row 6
+  const VTL_PALLET_GROUPS = {
+    CO: { label: '捷盟RT-11', groups: [
+      { codes: ['SDP09752BE1','SDP09752BF1','SDP09752BP1','JAP09752A61'], divisor: 65 },
+      { codes: ['SDP15002DE1','SDP15002DF1'], divisor: 44 },
+      { codes: ['SDP06001DE1','SDP06001DF1','SDP06001DP1','SDP06004DE1','SDP06004DF1','JAP05901A61','JAP05901A71','JAP05901AP1','JDP05901A61','JDP05901A71'], divisor: 45 },
+      { codes: ['KAP04551A61','KAP04551A71','KSP04551A61','KSP04551A71'], divisor: 60 },
+    ]},
+    CP: { label: '全台T-11', groups: [
+      { codes: ['SDP09752BA1','SDP09752BB1','SDP09752BN1','JAP09752AA1','JAP09752AB1','JDP09752AA1','JDP09752AB1'], divisor: 65 },
+      { codes: ['SDP09752DJ1','SDP15002DK1'], divisor: 44 },
+      { codes: ['SDP06001DJ1','SDP06001DK1','SDP06001DN1','SDP06004DJ1','SDP06004DK1','SDP06006DJ1','SDP06006DK1','JAP05901AA1','JAP05901AB1','JAP05901AN1','JAP05904AA1','JAP05904AB1','JDP05901AA1','JDP05901AB1','JDP05904AA1'], divisor: 45 },
+      { codes: ['KAP04551AA1','KAP04551AB1','KAP04554AA1','KAP04554AB1','KSP04551AA1','KSP04551AB1','KSP04554AA1'], divisor: 60 },
+      { codes: ['SDP06001DB1','JAP05801AA1'], divisor: 50 },
+    ]},
+    CQ: { label: 'PX板', groups: [
+      { codes: ['SDP09752CT1','SDP09752CU1','JAP09752BT1','JDP09752BT1','JDP09752BU1'], divisor: 65 },
+      { codes: ['SDP15002DT1'], divisor: 36 },
+      { codes: ['SDP06001CV1','SDP06001CW1','JAP05901BT1','JAP05901BU1','JDP05901BT1'], divisor: 40 },
+      { codes: ['KAP04551BT1','KAP04551BU1','KSP04551BT1','KSP04551BU1'], divisor: 60 },
+    ]},
+    CR: { label: '市塑板', groups: [
+      { codes: ['SDP15002EY1','SDP15002EZ1'], divisor: 44 },
+    ]},
+    CS: { label: '家福', groups: [
+      { codes: ['CMP05501CG1'], divisor: 65 },
+      { codes: ['SDP15002DL1','SDP15002DM1'], divisor: 40 },
+      { codes: ['SDP06004DG1','SDP06004DH1'], divisor: 54 },
+    ]},
+    CT: { label: '路凱', groups: [
+      { codes: ['JAP05904LC1','JDP05904LC1'], divisor: 45 },
+    ]},
+    CU: { label: 'COSTCO', groups: [
+      { codes: ['SDP09752B71'], divisor: 75 },
+      { codes: ['JAP05801B71'], divisor: 60 },
+    ]},
   };
 
   function _today() { return new Date().toISOString().slice(0,10).replace(/-/g,""); }
@@ -1067,6 +1114,36 @@
   // ── Pallet calculation ────────────────────────────────────────────────────
   function calcPallets(qtyByCode) { return B().calcPallets(qtyByCode); }
 
+  // ── VTL helpers ───────────────────────────────────────────────────────────
+  function _getVtlCodes() {
+    const seen = new Set();
+    const codes = [];
+    session.forEach(entry => {
+      (entry.items || []).forEach(i => {
+        if (!seen.has(i.code)) { seen.add(i.code); codes.push(i.code); }
+      });
+    });
+    return codes;
+  }
+
+  function calcVtlPallets(qtyMap) {
+    // Normalize keys (remove all spaces) for lookup in VTL_PALLET_GROUPS
+    const norm = {};
+    Object.entries(qtyMap).forEach(([k, v]) => {
+      norm[k.replace(/\s+/g, '')] = parseInt(v) || 0;
+    });
+    const result = {};
+    Object.entries(VTL_PALLET_GROUPS).forEach(([key, { groups }]) => {
+      let total = 0;
+      groups.forEach(({ codes, divisor }) => {
+        const groupSum = codes.reduce((s, c) => s + (norm[c] || 0), 0);
+        total += groupSum / divisor;
+      });
+      result[key] = total;
+    });
+    return result;
+  }
+
   // ── Full preview table rendering ─────────────────────────────────────────
   function renderSession() {
     const empty      = document.getElementById("session-empty");
@@ -1103,11 +1180,20 @@
     const thRem  = _th("所別/備註", "th-meta col-remark"); thRem.style.textAlign = "center";
     tr.append(thDate, thRem);
 
-    brand.codes.forEach(code => {
-      const cls = "col-product" + (brand.sharedCodes.has(code) ? " col-shared" : "");
-      tr.appendChild(_th(brand.labels[code], cls));
-    });
-    tr.appendChild(_th("棧板", "th-meta col-pallet"));
+    if (currentBrand === 'vtl') {
+      _getVtlCodes().forEach(code => {
+        tr.appendChild(_th(code, "vtl-prod-col"));
+      });
+      Object.values(VTL_PALLET_GROUPS).forEach(g => {
+        tr.appendChild(_th(g.label, "vtl-pal-col"));
+      });
+    } else {
+      brand.codes.forEach(code => {
+        const cls = "col-product" + (brand.sharedCodes.has(code) ? " col-shared" : "");
+        tr.appendChild(_th(brand.labels[code], cls));
+      });
+      tr.appendChild(_th("棧板", "th-meta col-pallet"));
+    }
     tr.appendChild(_th("", "col-action"));
     thead.appendChild(tr);
   }
@@ -1131,18 +1217,38 @@
     tr.appendChild(tdLabel);
 
     const totals = _calcTotals();
-    brand.codes.forEach(code => {
-      const td = document.createElement("td");
-      td.textContent = totals[code] || "";
-      td.style.textAlign = "center";
-      if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
-      tr.appendChild(td);
-    });
 
-    const tdPal = document.createElement("td");
-    tdPal.className = "pallet-cell";
-    tdPal.textContent = calcPallets(totals) || "";
-    tr.appendChild(tdPal);
+    if (currentBrand === 'vtl') {
+      _getVtlCodes().forEach(code => {
+        const td = document.createElement("td");
+        td.textContent = totals[code] || "";
+        td.style.textAlign = "center";
+        tr.appendChild(td);
+      });
+      const allQty = {};
+      session.forEach(entry => (entry.items || []).forEach(i => {
+        allQty[i.code] = (allQty[i.code] || 0) + i.qty;
+      }));
+      const palTotals = calcVtlPallets(allQty);
+      Object.keys(VTL_PALLET_GROUPS).forEach(key => {
+        const td = document.createElement("td");
+        td.className = "vtl-pallet-cell";
+        td.textContent = Math.floor(palTotals[key]) || "";
+        tr.appendChild(td);
+      });
+    } else {
+      brand.codes.forEach(code => {
+        const td = document.createElement("td");
+        td.textContent = totals[code] || "";
+        td.style.textAlign = "center";
+        if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
+        tr.appendChild(td);
+      });
+      const tdPal = document.createElement("td");
+      tdPal.className = "pallet-cell";
+      tdPal.textContent = calcPallets(totals) || "";
+      tr.appendChild(tdPal);
+    }
     tr.appendChild(document.createElement("td"));
     tfoot.appendChild(tr);
   }
@@ -1178,38 +1284,78 @@
     const qtyMap = {};
     (entry.items || []).forEach(i => { qtyMap[i.code] = i.qty; });
 
-    brand.codes.forEach(code => {
-      const td = document.createElement("td");
-      const inp = document.createElement("input");
-      inp.type = "number"; inp.min = "0"; inp.step = "1";
-      inp.value = qtyMap[code] || "";
-      inp.oninput = () => {
-        const q = parseInt(inp.value) || 0;
-        const iIdx = session[idx].items.findIndex(i => i.code === code);
-        if (q > 0) {
-          if (iIdx >= 0) session[idx].items[iIdx].qty = q;
-          else session[idx].items.push({ code, qty: q });
-        } else {
-          if (iIdx >= 0) session[idx].items.splice(iIdx, 1);
-        }
-        const currentQty = {};
-        session[idx].items.forEach(i => { currentQty[i.code] = i.qty; });
-        const palCell = tr.querySelector(".pallet-cell");
-        if (palCell) palCell.textContent = calcPallets(currentQty) || "";
-        _buildTableFoot();
-        _updateExportSummary();
-      };
-      inp.onfocus = () => inp.style.background = "#fffde7";
-      inp.onblur  = () => inp.style.background = "transparent";
-      if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
-      td.appendChild(inp);
-      tr.appendChild(td);
-    });
+    if (currentBrand === 'vtl') {
+      _getVtlCodes().forEach(code => {
+        const td = document.createElement("td");
+        const inp = document.createElement("input");
+        inp.type = "number"; inp.min = "0"; inp.step = "1";
+        inp.value = qtyMap[code] || "";
+        inp.oninput = () => {
+          const q = parseInt(inp.value) || 0;
+          const iIdx = session[idx].items.findIndex(i => i.code === code);
+          if (q > 0) {
+            if (iIdx >= 0) session[idx].items[iIdx].qty = q;
+            else session[idx].items.push({ code, qty: q });
+          } else {
+            if (iIdx >= 0) session[idx].items.splice(iIdx, 1);
+          }
+          const curQty = {};
+          session[idx].items.forEach(i => { curQty[i.code] = i.qty; });
+          const pallets = calcVtlPallets(curQty);
+          tr.querySelectorAll(".vtl-pallet-cell").forEach((cell, pi) => {
+            const key = Object.keys(VTL_PALLET_GROUPS)[pi];
+            cell.textContent = Math.floor(pallets[key]) || "";
+          });
+          _buildTableFoot();
+          _updateExportSummary();
+        };
+        inp.onfocus = () => inp.style.background = "#fffde7";
+        inp.onblur  = () => inp.style.background = "transparent";
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
 
-    const tdPal = document.createElement("td");
-    tdPal.className = "pallet-cell";
-    tdPal.textContent = calcPallets(qtyMap) || "";
-    tr.appendChild(tdPal);
+      const pallets = calcVtlPallets(qtyMap);
+      Object.keys(VTL_PALLET_GROUPS).forEach(key => {
+        const td = document.createElement("td");
+        td.className = "vtl-pallet-cell";
+        td.textContent = Math.floor(pallets[key]) || "";
+        tr.appendChild(td);
+      });
+    } else {
+      brand.codes.forEach(code => {
+        const td = document.createElement("td");
+        const inp = document.createElement("input");
+        inp.type = "number"; inp.min = "0"; inp.step = "1";
+        inp.value = qtyMap[code] || "";
+        inp.oninput = () => {
+          const q = parseInt(inp.value) || 0;
+          const iIdx = session[idx].items.findIndex(i => i.code === code);
+          if (q > 0) {
+            if (iIdx >= 0) session[idx].items[iIdx].qty = q;
+            else session[idx].items.push({ code, qty: q });
+          } else {
+            if (iIdx >= 0) session[idx].items.splice(iIdx, 1);
+          }
+          const currentQty = {};
+          session[idx].items.forEach(i => { currentQty[i.code] = i.qty; });
+          const palCell = tr.querySelector(".pallet-cell");
+          if (palCell) palCell.textContent = calcPallets(currentQty) || "";
+          _buildTableFoot();
+          _updateExportSummary();
+        };
+        inp.onfocus = () => inp.style.background = "#fffde7";
+        inp.onblur  = () => inp.style.background = "transparent";
+        if (brand.sharedCodes.has(code)) td.classList.add("col-shared");
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+
+      const tdPal = document.createElement("td");
+      tdPal.className = "pallet-cell";
+      tdPal.textContent = calcPallets(qtyMap) || "";
+      tr.appendChild(tdPal);
+    }
 
     const tdAct = document.createElement("td");
     tdAct.className = "col-action";
@@ -1225,8 +1371,9 @@
 
   function _calcTotals() {
     const brand = B();
+    const codes = currentBrand === 'vtl' ? _getVtlCodes() : brand.codes;
     const totals = {};
-    brand.codes.forEach(c => { totals[c] = 0; });
+    codes.forEach(c => { totals[c] = 0; });
     session.forEach(entry => {
       (entry.items || []).forEach(({ code, qty }) => {
         if (totals.hasOwnProperty(code)) totals[code] += qty;
