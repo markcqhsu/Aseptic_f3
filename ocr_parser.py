@@ -730,6 +730,9 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 qty = 0
                 # Scan ahead for CIN/CTN followed by quantity
                 for j in range(i, min(i + 7, len(lines))):
+                    # Stop if we've crossed into the next item's line
+                    if j > i and re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[j]):
+                        break
                     # Inline: capture everything after CTN/CIN, skip date tokens
                     inline_m = re.search(r"(?:CIN|CTN)\s+(.*)", lines[j])
                     if inline_m:
