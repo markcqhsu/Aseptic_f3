@@ -649,8 +649,8 @@ def _parse_vtl_qty(text: str) -> int:
       "540"      → 540
     """
     text = text.strip()
-    # Handwriting appended as "N/DD" — stop before single-digit-then-slash
-    m = re.match(r"^(\d+?)(?=[1-9]/\d{2})", text)
+    # Handwriting appended as "N/D" or "N/DD" — stop before digit-slash-digit(s)
+    m = re.match(r"^(\d+?)(?=[1-9]/\d{1,2})", text)
     if m and len(m.group(1)) >= 2:
         return int(m.group(1))
     # Thousands separator misread as decimal "1.430"
