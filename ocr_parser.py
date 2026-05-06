@@ -649,6 +649,9 @@ def _parse_vtl_qty(text: str) -> int:
       "540"      → 540
     """
     text = text.strip()
+    # Full date strings (DD/MM/YY or D/M/YY) are not quantities
+    if re.match(r"^\d{1,2}/\d{2}/\d{2}", text):
+        return 0
     # Handwriting appended as "N/D" or "N/DD" — stop before digit-slash-digit(s)
     m = re.match(r"^(\d+?)(?=[1-9]/\d{1,2})", text)
     if m and len(m.group(1)) >= 2:
@@ -674,11 +677,12 @@ def _parse_vtl_blocks(full_text: str) -> list:
     Each block → one row in the 代工明細表.
     Returns list of {date, warehouse, matched_items, unmatched_items}.
     """
-    raw_blocks = re.split(r"(?=\d+\s+營業部)", full_text)
+    # 营/営/營 are CJK variants of the same character — match all three
+    raw_blocks = re.split(r"(?=\d+\s+[营営營]業部)", full_text)
     results = []
 
     for block in raw_blocks:
-        if "營業部" not in block:
+        if not re.search(r"[营営營]業部", block):
             continue
         lines = [l.strip() for l in block.split("\n") if l.strip()]
 
@@ -707,7 +711,7 @@ def _parse_vtl_blocks(full_text: str) -> list:
             if re.match(r"^DP\d+", line):     continue
             if re.match(r"^\d{2}/\d{2}/\d{2}", line): continue
             if re.match(r"^SM[A-Z0-9]+", line): continue
-            if re.match(r"^\d+\s*營業部", line): continue
+            if re.match(r"^\d+\s*[营営營]業部", line): continue
             if re.match(r"^備註", line):        continue
             if "(" in line or "宏" in line:    continue
             # Must look like a Chinese location name
@@ -724,17 +728,24 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 raw_code = m.group(1)
                 normalized = _normalize_vtl_code(raw_code)
                 qty = 0
-                # Scan ahead up to 5 lines for CIN/CTN followed by quantity
-                for j in range(i, min(i + 6, len(lines))):
-                    # Inline: "CIN 2702/27"
-                    inline = re.search(r"(?:CIN|CTN)\s+([\d,\./]+)", lines[j])
-                    if inline:
-                        qty = _parse_vtl_qty(inline.group(1))
-                        break
+                # Scan ahead up to 6 lines for CIN/CTN followed by quantity
+                for j in range(i, min(i + 7, len(lines))):
+                    # Inline: capture everything after CTN/CIN, then find
+                    # the first token that is a valid quantity (skip date tokens)
+                    inline_m = re.search(r"(?:CIN|CTN)\s+(.*)", lines[j])
+                    if inline_m:
+                        for tok in inline_m.group(1).split():
+                            q = _parse_vtl_qty(tok)
+                            if q > 0:
+                                qty = q
+                                break
+                        if qty > 0:
+                            break
+                        # CTN found but no valid qty on this line; keep scanning
+                        continue
                     # Standalone CIN/CTN on its own line
                     if re.match(r"^(?:CIN|CTN)$", lines[j]):
-                        # Look ahead up to 3 lines for the quantity
-                        for k in range(j + 1, min(j + 4, len(lines))):
+                        for k in range(j + 1, min(j + 8, len(lines))):
                             candidate = _parse_vtl_qty(lines[k])
                             if candidate > 0:
                                 qty = candidate
