@@ -728,10 +728,9 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 raw_code = m.group(1)
                 normalized = _normalize_vtl_code(raw_code)
                 qty = 0
-                # Scan ahead up to 6 lines for CIN/CTN followed by quantity
+                # Scan ahead for CIN/CTN followed by quantity
                 for j in range(i, min(i + 7, len(lines))):
-                    # Inline: capture everything after CTN/CIN, then find
-                    # the first token that is a valid quantity (skip date tokens)
+                    # Inline: capture everything after CTN/CIN, skip date tokens
                     inline_m = re.search(r"(?:CIN|CTN)\s+(.*)", lines[j])
                     if inline_m:
                         for tok in inline_m.group(1).split():
@@ -739,13 +738,22 @@ def _parse_vtl_blocks(full_text: str) -> list:
                             if q > 0:
                                 qty = q
                                 break
-                        if qty > 0:
-                            break
-                        # CTN found but no valid qty on this line; keep scanning
-                        continue
+                        if qty == 0:
+                            # CTN on this line but qty is on next line(s)
+                            for k in range(j + 1, min(j + 5, len(lines))):
+                                # Stop at the next item-code line
+                                if re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[k]):
+                                    break
+                                candidate = _parse_vtl_qty(lines[k])
+                                if candidate > 0:
+                                    qty = candidate
+                                    break
+                        break  # always stop after finding CTN for this item
                     # Standalone CIN/CTN on its own line
                     if re.match(r"^(?:CIN|CTN)$", lines[j]):
                         for k in range(j + 1, min(j + 8, len(lines))):
+                            if re.match(r"\d+-[A-Z]{3}[\dOSIl]{4}\w+", lines[k]):
+                                break
                             candidate = _parse_vtl_qty(lines[k])
                             if candidate > 0:
                                 qty = candidate

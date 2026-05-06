@@ -2,7 +2,7 @@ import os
 from io import BytesIO
 from datetime import datetime
 import openpyxl
-from openpyxl.utils import column_index_from_string
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "vtl_template.xlsx")
 
@@ -16,14 +16,18 @@ def _get_code_col_map():
     wb = openpyxl.load_workbook(TEMPLATE_PATH, read_only=True)
     ws = wb.active
     m = {}
-    for cell in ws[6]:
-        if cell.column < 12 or cell.column > 90:
-            continue
-        v = cell.value
-        if v and isinstance(v, str):
-            code = v.strip().replace(" ", "").replace("　", "").replace(" ", "")
-            if len(code) >= 10:
-                m[code] = cell.column_letter
+    # Use iter_rows with explicit bounds to avoid EmptyCell/MergedCell issues
+    for row_cells in ws.iter_rows(min_row=6, max_row=6, min_col=12, max_col=90):
+        for cell in row_cells:
+            try:
+                v = cell.value
+                col_num = cell.column
+            except AttributeError:
+                continue
+            if v and isinstance(v, str):
+                code = v.strip().replace(" ", "").replace("　", "").replace(" ", "")
+                if len(code) >= 10:
+                    m[code] = get_column_letter(col_num)
     wb.close()
     _CODE_COL_MAP = m
     return m
