@@ -7,9 +7,7 @@ from openpyxl.styles import PatternFill
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "vtl_template.xlsx")
 
-_NO_FILL = PatternFill(fill_type=None)
-
-# 出庫 columns L-CL (col 12-90): product code → column letter
+# 出庫 columns L-CL (col 12-110): product code -> column letter
 _CODE_COL_MAP = None
 
 def _get_code_col_map():
@@ -19,8 +17,7 @@ def _get_code_col_map():
     wb = openpyxl.load_workbook(TEMPLATE_PATH, read_only=True)
     ws = wb.active
     m = {}
-    # Use iter_rows with explicit bounds to avoid EmptyCell/MergedCell issues
-    for row_cells in ws.iter_rows(min_row=6, max_row=6, min_col=12, max_col=90):
+    for row_cells in ws.iter_rows(min_row=6, max_row=6, min_col=12, max_col=110):
         for cell in row_cells:
             try:
                 v = cell.value
@@ -28,7 +25,8 @@ def _get_code_col_map():
             except AttributeError:
                 continue
             if v and isinstance(v, str):
-                code = v.strip().replace(" ", "").replace("　", "").replace(" ", "")
+                # Strip newlines and spaces (template cells may wrap with \n)
+                code = v.strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("　", "").replace(" ", "")
                 if len(code) >= 10:
                     m[code] = get_column_letter(col_num)
     wb.close()
@@ -70,22 +68,24 @@ def build_vtl_workbook(rows):
         cell = ws.cell(row=r, column=c)
         try:
             cell.value = v
-            cell.fill = _NO_FILL
+            cell.fill = PatternFill(fill_type=None)
         except AttributeError:
             pass
 
     FIRST_ROW = 7
+    filled_cols = set()  # track which product columns have data written
+
     for i, row in enumerate(rows):
         r = FIRST_ROW + i
 
-        # Clear entire row background inherited from template
-        for c in range(1, 91):
+        # Clear product columns (A~CN, col 1-92) to white; pallet columns (CO+ col 93+) keep template colors
+        for c in range(1, 93):
             try:
-                ws.cell(row=r, column=c).fill = _NO_FILL
+                ws.cell(row=r, column=c).fill = PatternFill(fill_type=None)
             except Exception:
                 pass
 
-        # Column A = 日期
+        # Column A = date
         date_str = row.get("date", "")
         try:
             dt = datetime.strptime(date_str, "%Y/%m/%d")
@@ -93,10 +93,10 @@ def build_vtl_workbook(rows):
             dt = None
         safe_set(r, 1, dt)
 
-        # Column K = 所別/備註
+        # Column K = warehouse
         safe_set(r, 11, row.get("warehouse", ""))
 
-        # 出庫 product quantities
+        # Product quantities
         for item in row.get("items", []):
             raw = item.get("code", "")
             normalized = raw.replace(" ", "").replace("　", "").replace(" ", "")
@@ -104,6 +104,11 @@ def build_vtl_workbook(rows):
             if col_letter:
                 cidx = column_index_from_string(col_letter)
                 safe_set(r, cidx, item.get("qty", 0))
+                filled_cols.add(col_letter)
+
+    # Unhide columns that have data written
+    for col_letter in filled_cols:
+        ws.column_dimensions[col_letter].hidden = False
 
     buf = BytesIO()
     wb.save(buf)
