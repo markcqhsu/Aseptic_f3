@@ -630,6 +630,9 @@ def _normalize_vtl_code(raw: str) -> str:
     """
     code = re.sub(r"^\d+-", "", raw.strip())
     chars = list(code)
+    # Position 2 is always 'P' in VTL codes (SDP, JAP, JDP, KAP...)
+    if len(chars) > 2 and chars[2] == "F":
+        chars[2] = "P"
     for i in range(3, min(7, len(chars))):
         if chars[i] == "O": chars[i] = "0"
         if chars[i] == "S": chars[i] = "5"

@@ -27,7 +27,7 @@ def _get_code_col_map():
             except AttributeError:
                 continue
             if v and isinstance(v, str):
-                code = v.strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("　", "").replace(" ", "")
+                code = v.strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("　", "").replace(" ", "")
                 if len(code) >= 10:
                     m[code] = get_column_letter(col_num)
     wb.close()
@@ -51,6 +51,19 @@ def build_vtl_workbook(rows):
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb.active
 
+    # Debug: check template fill types and structure
+    sample_cell = ws.cell(row=7, column=1)
+    print(f"[VTL] template row7 col1 fill_type={sample_cell.fill.fill_type}", file=sys.stderr)
+    try:
+        cf_keys = list(ws.conditional_formatting._cf_rules.keys())[:3]
+        print(f"[VTL] CF rules: {cf_keys}", file=sys.stderr)
+    except Exception as e:
+        print(f"[VTL] CF check error: {e}", file=sys.stderr)
+    try:
+        print(f"[VTL] tables: {list(ws.tables.keys())}", file=sys.stderr)
+    except Exception as e:
+        print(f"[VTL] tables check error: {e}", file=sys.stderr)
+
     # Set sheet tab name based on the month of the first row's date
     first_date_str = rows[0].get("date", "") if rows else ""
     try:
@@ -68,6 +81,19 @@ def build_vtl_workbook(rows):
         except Exception:
             pass
 
+    FIRST_ROW = 7
+
+    # Clear ALL data rows in the template (not just rows with data) for product columns 1-92
+    # This removes template background colors from both filled and empty rows
+    template_max_row = ws.max_row
+    print(f"[VTL] clearing rows 7-{template_max_row} cols 1-92", file=sys.stderr)
+    for r in range(FIRST_ROW, template_max_row + 1):
+        for c in range(1, 93):
+            try:
+                ws.cell(row=r, column=c).fill = WHITE_FILL
+            except Exception:
+                pass
+
     def safe_set(r, c, v):
         cell = ws.cell(row=r, column=c)
         try:
@@ -76,18 +102,10 @@ def build_vtl_workbook(rows):
         except AttributeError:
             pass
 
-    FIRST_ROW = 7
     filled_cols = set()
 
     for i, row in enumerate(rows):
         r = FIRST_ROW + i
-
-        # Clear product columns (A~CN, col 1-92) to white; pallet columns (CO+ col 93+) keep template colors
-        for c in range(1, 93):
-            try:
-                ws.cell(row=r, column=c).fill = WHITE_FILL
-            except Exception:
-                pass
 
         # Column A = date
         date_str = row.get("date", "")
@@ -103,7 +121,7 @@ def build_vtl_workbook(rows):
         # Product quantities
         for item in row.get("items", []):
             raw = item.get("code", "")
-            normalized = raw.replace(" ", "").replace("　", "").replace(" ", "")
+            normalized = raw.replace(" ", "").replace("　", "").replace(" ", "")
             col_letter = code_col.get(normalized)
             print(f"[VTL] row{i} code={repr(raw)} norm={repr(normalized)} col={col_letter} qty={item.get('qty')}", file=sys.stderr)
             if col_letter:
