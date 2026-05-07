@@ -6,6 +6,12 @@ import openpyxl
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.styles import PatternFill
 
+try:
+    from openpyxl.formatting.formatting import ConditionalFormattingList
+    _HAS_CF_CLASS = True
+except ImportError:
+    _HAS_CF_CLASS = False
+
 WHITE_FILL = PatternFill("solid", fgColor="FFFFFFFF")
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "vtl_template.xlsx")
 
@@ -51,18 +57,10 @@ def build_vtl_workbook(rows):
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb.active
 
-    # Debug: check template fill types and structure
-    sample_cell = ws.cell(row=7, column=1)
-    print(f"[VTL] template row7 col1 fill_type={sample_cell.fill.fill_type}", file=sys.stderr)
-    try:
-        cf_keys = list(ws.conditional_formatting._cf_rules.keys())[:3]
-        print(f"[VTL] CF rules: {cf_keys}", file=sys.stderr)
-    except Exception as e:
-        print(f"[VTL] CF check error: {e}", file=sys.stderr)
-    try:
-        print(f"[VTL] tables: {list(ws.tables.keys())}", file=sys.stderr)
-    except Exception as e:
-        print(f"[VTL] tables check error: {e}", file=sys.stderr)
+    # Remove conditional formatting — it overrides direct cell fills and causes colored backgrounds
+    if _HAS_CF_CLASS:
+        ws.conditional_formatting = ConditionalFormattingList()
+        print("[VTL] cleared conditional formatting", file=sys.stderr)
 
     # Set sheet tab name based on the month of the first row's date
     first_date_str = rows[0].get("date", "") if rows else ""
@@ -81,12 +79,19 @@ def build_vtl_workbook(rows):
         except Exception:
             pass
 
+    # Clear row 6 product-code columns (L=12 to CN=92) to white
+    # Keeps cols 1-11 (日期/品項/所別 headers) and cols 93+ (棧板 headers) as template
+    for c in range(12, 93):
+        try:
+            ws.cell(row=6, column=c).fill = WHITE_FILL
+        except Exception:
+            pass
+
     FIRST_ROW = 7
 
-    # Clear ALL data rows in the template (not just rows with data) for product columns 1-92
-    # This removes template background colors from both filled and empty rows
+    # Clear ALL data rows (row 7 to end) for product columns 1-92 to white
+    # Pallet columns (CO+ = col 93+) keep their template color
     template_max_row = ws.max_row
-    print(f"[VTL] clearing rows 7-{template_max_row} cols 1-92", file=sys.stderr)
     for r in range(FIRST_ROW, template_max_row + 1):
         for c in range(1, 93):
             try:
