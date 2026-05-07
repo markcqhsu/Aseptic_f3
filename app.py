@@ -186,20 +186,37 @@ def ocr_vtl():
         file.save(tmp.name)
         tmp_path = tmp.name
 
+    method = "unknown"
+    debug_info = []
     try:
         if is_pdf:
+            method = "google_vision_pdf"
             orders = parse_vtl_pdf(tmp_path)
         else:
             try:
+                method = "claude_vision"
                 orders = parse_vtl_with_claude(tmp_path)
-            except Exception:
-                orders = parse_vtl_transfer_order(tmp_path)
-    except Exception:
-        return jsonify({"error": "OCR 處理失敗，請確認圖片格式"}), 500
+                debug_info.append("Claude Vision 成功")
+            except Exception as e:
+                debug_info.append(f"Claude Vision 失敗：{type(e).__name__}: {e}")
+                method = "google_vision_fallback"
+                try:
+                    orders = parse_vtl_transfer_order(tmp_path)
+                    debug_info.append("Google Vision fallback 成功")
+                except Exception as e2:
+                    debug_info.append(f"Google Vision 也失敗：{type(e2).__name__}: {e2}")
+                    raise
+    except Exception as e:
+        return jsonify({
+            "error": "OCR 處理失敗",
+            "detail": str(e),
+            "method": method,
+            "debug": debug_info,
+        }), 500
     finally:
         os.unlink(tmp_path)
 
-    return jsonify({"orders": orders})
+    return jsonify({"orders": orders, "method": method, "debug": debug_info})
 
 
 @app.post("/export-vtl")

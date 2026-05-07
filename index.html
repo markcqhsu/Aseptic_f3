@@ -347,7 +347,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.8.1</span>
+  <span class="version-badge">v1.8.2</span>
 </header>
 
 <div class="container">
@@ -822,8 +822,14 @@
       const res = await fetch(endpoint, { method: "POST", body: form });
       clearInterval(ticker);
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`HTTP ${res.status}：${txt.slice(0, 160)}`);
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.error) errMsg += `：${errData.error}`;
+          if (errData.detail) errMsg += `（${errData.detail}）`;
+          if (errData.debug?.length) errMsg += ` [${errData.debug.join(" → ")}]`;
+        } catch { const txt = await res.text(); errMsg += `：${txt.slice(0, 200)}`; }
+        throw new Error(errMsg);
       }
       const data = await res.json();
       setProgressStep(3);
@@ -831,8 +837,14 @@
         hideProgress();
         // 可樂 PDF → multi-order flow; 維他露 → always multi-block; 味全 → single-order
         if (currentBrand === "vtl") {
-          fillVtlResults(data.orders || []);
-          setStatus(`辨識完成，共找到 ${(data.orders || []).length} 個訂單區塊。`, "ok");
+          const orders = data.orders || [];
+          fillVtlResults(orders);
+          const debugStr = data.debug?.length ? `（${data.debug.join(" → ")}）` : "";
+          if (orders.length === 0) {
+            setStatus(`辨識完成但找不到任何訂單區塊，請確認圖片是否正確。${debugStr}`, "error");
+          } else {
+            setStatus(`辨識完成，共找到 ${orders.length} 個訂單區塊。${debugStr}`, "ok");
+          }
         } else if (pdf && currentBrand === "coke") {
           fillPdfResults(data.orders || []);
           setStatus(`PDF 解析完成，共找到 ${(data.orders || []).length} 張調撥單。`, "ok");
