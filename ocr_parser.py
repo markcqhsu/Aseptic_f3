@@ -624,7 +624,7 @@ _VTL_CUSTOMER_FIXES = {
 
 def _normalize_vtl_warehouse(raw: str) -> str:
     """Fix OCR errors in VTL warehouse codes: VR1-XXXXXX → VSR-XXXXXX."""
-    return re.sub(r"\bVR\d-", "VSR-", raw)
+    return re.sub(r"VR\d-", "VSR-", raw)
 
 
 def _normalize_vtl_code(raw: str) -> str:
