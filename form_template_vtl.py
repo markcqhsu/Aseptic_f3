@@ -1,10 +1,12 @@
 import os
+import sys
 from io import BytesIO
 from datetime import datetime
 import openpyxl
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.styles import PatternFill
 
+WHITE_FILL = PatternFill("solid", fgColor="FFFFFFFF")
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "vtl_template.xlsx")
 
 # 出庫 columns L-CL (col 12-110): product code -> column letter
@@ -25,12 +27,12 @@ def _get_code_col_map():
             except AttributeError:
                 continue
             if v and isinstance(v, str):
-                # Strip newlines and spaces (template cells may wrap with \n)
                 code = v.strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("　", "").replace(" ", "")
                 if len(code) >= 10:
                     m[code] = get_column_letter(col_num)
     wb.close()
     _CODE_COL_MAP = m
+    print(f"[VTL] _get_code_col_map built {len(m)} entries. Sample: {list(m.keys())[:5]}", file=sys.stderr)
     return m
 
 
@@ -44,6 +46,8 @@ def build_vtl_workbook(rows):
     Returns xlsx bytes.
     """
     code_col = _get_code_col_map()
+    print(f"[VTL] build_vtl_workbook: {len(rows)} rows, code_col size={len(code_col)}", file=sys.stderr)
+
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb.active
 
@@ -68,12 +72,12 @@ def build_vtl_workbook(rows):
         cell = ws.cell(row=r, column=c)
         try:
             cell.value = v
-            cell.fill = PatternFill(fill_type=None)
+            cell.fill = WHITE_FILL
         except AttributeError:
             pass
 
     FIRST_ROW = 7
-    filled_cols = set()  # track which product columns have data written
+    filled_cols = set()
 
     for i, row in enumerate(rows):
         r = FIRST_ROW + i
@@ -81,7 +85,7 @@ def build_vtl_workbook(rows):
         # Clear product columns (A~CN, col 1-92) to white; pallet columns (CO+ col 93+) keep template colors
         for c in range(1, 93):
             try:
-                ws.cell(row=r, column=c).fill = PatternFill(fill_type=None)
+                ws.cell(row=r, column=c).fill = WHITE_FILL
             except Exception:
                 pass
 
@@ -101,10 +105,13 @@ def build_vtl_workbook(rows):
             raw = item.get("code", "")
             normalized = raw.replace(" ", "").replace("　", "").replace(" ", "")
             col_letter = code_col.get(normalized)
+            print(f"[VTL] row{i} code={repr(raw)} norm={repr(normalized)} col={col_letter} qty={item.get('qty')}", file=sys.stderr)
             if col_letter:
                 cidx = column_index_from_string(col_letter)
                 safe_set(r, cidx, item.get("qty", 0))
                 filled_cols.add(col_letter)
+
+    print(f"[VTL] filled_cols={filled_cols}", file=sys.stderr)
 
     # Unhide columns that have data written
     for col_letter in filled_cols:
