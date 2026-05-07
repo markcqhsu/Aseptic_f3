@@ -1,4 +1,7 @@
 import re
+import os
+import base64
+import json
 import google.auth
 from google.cloud import vision
 
@@ -652,6 +655,9 @@ def _parse_vtl_qty(text: str) -> int:
     # Full date strings (DD/MM/YY or D/M/YY) are not quantities
     if re.match(r"^\d{1,2}/\d{2}/\d{2}", text):
         return 0
+    # Standalone handwriting date annotations like "2/3", "3/6", "1/8" are not quantities
+    if re.match(r"^\d{1,2}/\d{1,2}$", text):
+        return 0
     # Handwriting appended as "N/D" or "N/DD" — stop before digit-slash-digit(s)
     m = re.match(r"^(\d+?)(?=[1-9]/\d{1,2})", text)
     if m and len(m.group(1)) >= 2:
@@ -686,6 +692,15 @@ def _parse_vtl_blocks(full_text: str) -> list:
             continue
         lines = [l.strip() for l in block.split("\n") if l.strip()]
 
+        # Trim at summary/footer section to prevent totals from being parsed as quantities
+        trimmed = []
+        for ln in lines:
+            if re.match(r"^-{3,}", ln) or re.match(r"^總計", ln) or re.match(r"^單位\b", ln):
+                break
+            trimmed.append(ln)
+        if trimmed:
+            lines = trimmed
+
         date = ""
         order_no = ""
         destination = ""
@@ -713,7 +728,7 @@ def _parse_vtl_blocks(full_text: str) -> list:
             if re.match(r"^SM[A-Z0-9]+", line): continue
             if re.match(r"^\d+\s*[营営營]業部", line): continue
             if re.match(r"^備註", line):        continue
-            if "(" in line or "宏" in line:    continue
+            if "(" in line and "宏" in line:    continue
             # Must look like a Chinese location name
             if re.search(r"[一-鿿]", line) and len(line) >= 2:
                 destination = _VTL_CUSTOMER_FIXES.get(line, line)
@@ -791,6 +806,86 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 "unmatched_items": [],
             })
 
+    return results
+
+
+_VTL_CLAUDE_PROMPT = """你正在解析維他露食品股份有限公司的調撥單（訂明細表）。
+
+請提取圖片中每個「N 營業部」區塊的資訊，回傳 JSON。
+
+格式：
+{
+  "orders": [
+    {
+      "date": "YYYY/MM/DD",
+      "warehouse": "倉庫名稱VSR-XXXXXX",
+      "items": [
+        {"code": "XXXXXXXXXXX", "qty": 數量},
+        ...
+      ]
+    }
+  ]
+}
+
+規則：
+1. date：排出日期，YY/MM/DD 轉為 YYYY/MM/DD（如 26/05/07 → 2026/05/07）
+2. warehouse：送貨客戶倉庫名稱（如「巨航倉」「員林中倉」）加上 VSR-XXXXXX 訂單編號，合併為一個字串
+3. code：品號原文，不含前面的序號（如 1-），不加空格（如 JAP05801B71、JDP05901BT1）
+4. qty：該品項印刷的阿拉伯數字數量，忽略旁邊所有手寫標記（如 2/3、3/6、1/8 等）
+5. 每個品項前面有 CTN 或 CIN 標記，數量在 CTN/CIN 之後
+6. 只回傳 JSON，不要任何說明文字"""
+
+
+def parse_vtl_with_claude(image_path: str) -> list:
+    """Parse 維他露 調撥單 using Claude Vision API. Returns same format as parse_vtl_transfer_order."""
+    import anthropic
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+
+    with open(image_path, "rb") as f:
+        img_data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+    ext = os.path.splitext(image_path)[1].lower()
+    media_type_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    media_type = media_type_map.get(ext, "image/jpeg")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_data}},
+                {"type": "text", "text": _VTL_CLAUDE_PROMPT},
+            ],
+        }],
+    )
+
+    raw = message.content[0].text.strip()
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    data = json.loads(raw)
+    results = []
+    for order in data.get("orders", []):
+        items = []
+        for it in order.get("items", []):
+            code = _normalize_vtl_code(str(it.get("code", "")))
+            qty = int(it.get("qty", 0))
+            if code and qty > 0:
+                items.append({"code": code, "qty": qty})
+        if items:
+            results.append({
+                "date":            order.get("date", ""),
+                "warehouse":       order.get("warehouse", ""),
+                "matched_items":   items,
+                "unmatched_items": [],
+            })
     return results
 
 

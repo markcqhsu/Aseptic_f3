@@ -7,6 +7,7 @@ from ocr_parser import (
     parse_transfer_order, parse_pdf_transfer_orders,
     parse_weichuan_transfer_order, parse_weichuan_pdf,
     parse_vtl_transfer_order, parse_vtl_pdf,
+    parse_vtl_with_claude,
 )
 from form_template import build_workbook
 from form_template_weichuan import build_weichuan_workbook
@@ -189,7 +190,10 @@ def ocr_vtl():
         if is_pdf:
             orders = parse_vtl_pdf(tmp_path)
         else:
-            orders = parse_vtl_transfer_order(tmp_path)
+            try:
+                orders = parse_vtl_with_claude(tmp_path)
+            except Exception:
+                orders = parse_vtl_transfer_order(tmp_path)
     except Exception:
         return jsonify({"error": "OCR 處理失敗，請確認圖片格式"}), 500
     finally:
