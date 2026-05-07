@@ -89,11 +89,12 @@ def build_vtl_workbook(rows):
 
     FIRST_ROW = 7
 
-    # Clear ALL data rows (row 7 to end) for product columns 1-92 to white
-    # Pallet columns (CO+ = col 93+) keep their template color
+    # Clear ALL data rows (row 7 to end) for ALL columns to white
+    # Header rows (1-6) keep template colors; row 6 product cols also cleared above
     template_max_row = ws.max_row
+    template_max_col = ws.max_column
     for r in range(FIRST_ROW, template_max_row + 1):
-        for c in range(1, 93):
+        for c in range(1, template_max_col + 1):
             try:
                 ws.cell(row=r, column=c).fill = WHITE_FILL
             except Exception:

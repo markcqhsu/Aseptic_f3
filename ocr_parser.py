@@ -622,6 +622,11 @@ _VTL_CUSTOMER_FIXES = {
 }
 
 
+def _normalize_vtl_warehouse(raw: str) -> str:
+    """Fix OCR errors in VTL warehouse codes: VR1-XXXXXX → VSR-XXXXXX."""
+    return re.sub(r"\bVR\d-", "VSR-", raw)
+
+
 def _normalize_vtl_code(raw: str) -> str:
     """
     Convert OCR product code to template format.
@@ -800,7 +805,7 @@ def _parse_vtl_blocks(full_text: str) -> list:
                 items.append({"code": normalized, "qty": qty})
 
         if items:
-            wh = (destination + order_no) if destination else order_no
+            wh = _normalize_vtl_warehouse((destination + order_no) if destination else order_no)
             matched = [{"code": it["code"], "qty": it["qty"]} for it in items]
             results.append({
                 "date":            date,
@@ -888,7 +893,7 @@ def parse_vtl_with_claude(image_path: str) -> list:
         if items:
             results.append({
                 "date":            order.get("date", ""),
-                "warehouse":       order.get("warehouse", ""),
+                "warehouse":       _normalize_vtl_warehouse(order.get("warehouse", "")),
                 "matched_items":   items,
                 "unmatched_items": [],
             })
