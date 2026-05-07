@@ -817,6 +817,14 @@ def _parse_vtl_blocks(full_text: str) -> list:
     return results
 
 
+_VTL_CLAUDE_PROMPT_BASE = """規則：
+1. date：排出日期，YY/MM/DD 轉為 YYYY/MM/DD（如 26/05/07 → 2026/05/07）
+2. warehouse：送貨客戶倉庫名稱（如「巨航倉」「員林中倉」）加上 VSR-XXXXXX 或訂單編號，合併為一個字串；若無 VSR 編號則只用倉庫名稱
+3. code：品號原文，不含前面的序號（如 1-），不加空格（如 JAP05801B71、JDP05901BT1）
+4. qty：該品項印刷的阿拉伯數字數量，忽略旁邊所有手寫標記（如 2/3、3/6、1/8 等）；若完全無法辨識請省略該品項
+5. 每個品項前面有 CTN 或 CIN 標記，數量在 CTN/CIN 之後
+6. 只回傳 JSON，不要任何說明文字"""
+
 _VTL_CLAUDE_PROMPT = """你正在解析維他露食品股份有限公司的調撥單（訂明細表）。
 
 請提取圖片中每個編號區塊（如：N 營業部、N 管轄組 等）的資訊，回傳 JSON。
@@ -835,13 +843,30 @@ _VTL_CLAUDE_PROMPT = """你正在解析維他露食品股份有限公司的調�
   ]
 }
 
-規則：
-1. date：排出日期，YY/MM/DD 轉為 YYYY/MM/DD（如 26/05/07 → 2026/05/07）
-2. warehouse：送貨客戶倉庫名稱（如「巨航倉」「員林中倉」）加上 VSR-XXXXXX 或訂單編號，合併為一個字串；若無 VSR 編號則只用倉庫名稱
-3. code：品號原文，不含前面的序號（如 1-），不加空格（如 JAP05801B71、JDP05901BT1）
-4. qty：該品項印刷的阿拉伯數字數量，忽略旁邊所有手寫標記（如 2/3、3/6、1/8 等）；若完全無法辨識請省略該品項
-5. 每個品項前面有 CTN 或 CIN 標記，數量在 CTN/CIN 之後
-6. 只回傳 JSON，不要任何說明文字"""
+""" + _VTL_CLAUDE_PROMPT_BASE
+
+_VTL_CLAUDE_PROMPT_MULTIPAGE = """你正在解析維他露食品股份有限公司的多頁調撥單（以下有多張圖片，代表 PDF 的各頁）。
+
+文件結構：每個「N 營業部」（N 為數字）代表一個訂單區塊的開始，「備註」代表該區塊的結束。
+跨頁規則：若某個訂單區塊的開頭在上一頁、品項延續到下一頁，請將所有品項合併為同一筆訂單。
+
+請提取所有訂單區塊的資訊，回傳 JSON。
+
+格式：
+{
+  "orders": [
+    {
+      "date": "YYYY/MM/DD",
+      "warehouse": "倉庫名稱VSR-XXXXXX",
+      "items": [
+        {"code": "XXXXXXXXXXX", "qty": 數量},
+        ...
+      ]
+    }
+  ]
+}
+
+""" + _VTL_CLAUDE_PROMPT_BASE
 
 
 def parse_vtl_with_claude(image_path: str) -> list:
@@ -917,11 +942,93 @@ def parse_vtl_transfer_order(image_path: str) -> list:
     return _parse_vtl_blocks(response.full_text_annotation.text)
 
 
-def parse_vtl_pdf(pdf_path: str) -> list:
-    """Parse a 維他露 PDF (multiple pages). Returns all order blocks."""
+def parse_vtl_pdf_with_claude(pdf_path: str) -> list:
+    """Parse 維他露 PDF using Claude Vision with all pages in one request."""
+    import anthropic
     import tempfile
+    import sys
     from pdf2image import convert_from_path
 
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+
+    images = convert_from_path(pdf_path)
+    print(f"[Claude-PDF] {len(images)} pages", file=sys.stderr)
+
+    content_blocks = []
+    temp_files = []
+    try:
+        for i, img in enumerate(images):
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                img.save(tmp.name, "PNG")
+                temp_files.append(tmp.name)
+            with open(temp_files[-1], "rb") as f:
+                img_data = base64.standard_b64encode(f.read()).decode("utf-8")
+            content_blocks.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": img_data},
+            })
+            print(f"[Claude-PDF] page {i+1} encoded ({len(img_data)} chars)", file=sys.stderr)
+    finally:
+        for tf in temp_files:
+            try:
+                os.unlink(tf)
+            except Exception:
+                pass
+
+    content_blocks.append({"type": "text", "text": _VTL_CLAUDE_PROMPT_MULTIPAGE})
+
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8192,
+        messages=[{"role": "user", "content": content_blocks}],
+    )
+
+    raw = message.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    print(f"[Claude-PDF] raw len={len(raw)} preview={raw[:300]}", file=sys.stderr)
+    data = json.loads(raw)
+    print(f"[Claude-PDF] orders={len(data.get('orders', []))}", file=sys.stderr)
+
+    results = []
+    for order in data.get("orders", []):
+        items = []
+        for it in order.get("items", []):
+            code = _normalize_vtl_code(str(it.get("code", "")))
+            try:
+                qty = int(it.get("qty", 0) or 0)
+            except (ValueError, TypeError):
+                qty = 0
+            if code and qty > 0:
+                items.append({"code": code, "qty": qty})
+        if items:
+            results.append({
+                "date":            order.get("date", ""),
+                "warehouse":       _normalize_vtl_warehouse(order.get("warehouse", "")),
+                "matched_items":   items,
+                "unmatched_items": [],
+            })
+
+    if not results:
+        raise ValueError(f"Claude PDF returned no usable orders (raw count: {len(data.get('orders', []))})")
+    return results
+
+
+def parse_vtl_pdf(pdf_path: str) -> list:
+    """Parse 維他露 PDF: Claude Vision (all pages) with Google Vision fallback."""
+    import sys
+    try:
+        return parse_vtl_pdf_with_claude(pdf_path)
+    except Exception as e:
+        print(f"[VTL-PDF] Claude failed ({e}), falling back to Google Vision", file=sys.stderr)
+
+    import tempfile
+    from pdf2image import convert_from_path
     images = convert_from_path(pdf_path)
     all_blocks = []
     for img in images:
@@ -929,9 +1036,7 @@ def parse_vtl_pdf(pdf_path: str) -> list:
             img.save(tmp.name, "PNG")
             tmp_path = tmp.name
         try:
-            blocks = parse_vtl_transfer_order(tmp_path)
-            all_blocks.extend(blocks)
+            all_blocks.extend(parse_vtl_transfer_order(tmp_path))
         finally:
-            import os as _os
-            _os.unlink(tmp_path)
+            os.unlink(tmp_path)
     return all_blocks

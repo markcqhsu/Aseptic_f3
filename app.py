@@ -188,7 +188,7 @@ def ocr_vtl():
     debug_info = []
     try:
         if is_pdf:
-            method = "google_vision_pdf"
+            method = "claude_vision_pdf"
             orders = parse_vtl_pdf(tmp_path)
         else:
             try:
