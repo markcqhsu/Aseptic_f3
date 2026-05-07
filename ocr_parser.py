@@ -953,21 +953,21 @@ def parse_vtl_pdf_with_claude(pdf_path: str) -> list:
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
 
-    images = convert_from_path(pdf_path)
+    images = convert_from_path(pdf_path, dpi=200)
     print(f"[Claude-PDF] {len(images)} pages", file=sys.stderr)
 
     content_blocks = []
     temp_files = []
     try:
         for i, img in enumerate(images):
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                img.save(tmp.name, "PNG")
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                img.save(tmp.name, "JPEG", quality=85)
                 temp_files.append(tmp.name)
             with open(temp_files[-1], "rb") as f:
                 img_data = base64.standard_b64encode(f.read()).decode("utf-8")
             content_blocks.append({
                 "type": "image",
-                "source": {"type": "base64", "media_type": "image/png", "data": img_data},
+                "source": {"type": "base64", "media_type": "image/jpeg", "data": img_data},
             })
             print(f"[Claude-PDF] page {i+1} encoded ({len(img_data)} chars)", file=sys.stderr)
     finally:
