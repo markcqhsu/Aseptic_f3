@@ -1,3 +1,4 @@
+import io
 import os
 import tempfile
 from flask import Flask, request, jsonify, send_file
@@ -16,6 +17,16 @@ from form_template_vtl import build_vtl_workbook
 app = Flask(__name__)
 CORS(app, origins=["https://markcqhsu.github.io"])
 
+# Limit upload size to 20 MB
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+
+_ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
+
+
+def _image_suffix(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    return ext if ext in _ALLOWED_IMAGE_EXT else ".jpg"
+
 
 @app.get("/health")
 def health():
@@ -24,10 +35,6 @@ def health():
 
 @app.post("/ocr")
 def ocr():
-    """
-    Accepts multipart/form-data with field 'image'.
-    Returns parsed order data only — session state is managed client-side.
-    """
     if "image" not in request.files:
         return jsonify({"error": "no image field"}), 400
 
@@ -35,7 +42,7 @@ def ocr():
     if file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    suffix = os.path.splitext(file.filename)[1] or ".jpg"
+    suffix = _image_suffix(file.filename)
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
@@ -58,10 +65,6 @@ def ocr():
 
 @app.post("/ocr-pdf")
 def ocr_pdf():
-    """
-    Accepts multipart/form-data with field 'file' (PDF).
-    Returns parsed order data for every page of the PDF.
-    """
     if "file" not in request.files:
         return jsonify({"error": "no file field"}), 400
 
@@ -88,10 +91,6 @@ def ocr_pdf():
 
 @app.post("/export")
 def export():
-    """
-    Builds an Excel file from the session rows sent by the client.
-    Body JSON: {"rows": [{date, warehouse, items:[{code,qty}]}, ...]}
-    """
     data = request.get_json(force=True, silent=True) or {}
     rows = data.get("rows", [])
 
@@ -104,7 +103,7 @@ def export():
         return jsonify({"error": "Excel 產生失敗"}), 500
 
     return send_file(
-        __import__("io").BytesIO(xlsx_bytes),
+        io.BytesIO(xlsx_bytes),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="宏全三廠_成品庫存.xlsx",
@@ -113,10 +112,6 @@ def export():
 
 @app.post("/ocr-weichuan")
 def ocr_weichuan():
-    """
-    Parse 味全 出貨單 — accepts image (field 'image') or PDF (field 'file').
-    Returns: {date, warehouse, matched_items, unmatched_items}
-    """
     is_pdf = "file" in request.files
     file   = request.files.get("file") or request.files.get("image")
     if file is None:
@@ -124,7 +119,13 @@ def ocr_weichuan():
     if file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    suffix = ".pdf" if is_pdf else (os.path.splitext(file.filename)[1] or ".jpg")
+    if is_pdf:
+        if not file.filename.lower().endswith(".pdf"):
+            return jsonify({"error": "file must be a PDF"}), 400
+        suffix = ".pdf"
+    else:
+        suffix = _image_suffix(file.filename)
+
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
@@ -144,10 +145,6 @@ def ocr_weichuan():
 
 @app.post("/export-weichuan")
 def export_weichuan():
-    """
-    Build 味全代工明細表 Excel.
-    Body JSON: {"rows": [{date, warehouse, items:[{code,qty}]}, ...]}
-    """
     data = request.get_json(force=True, silent=True) or {}
     rows = data.get("rows", [])
 
@@ -160,7 +157,7 @@ def export_weichuan():
         return jsonify({"error": "Excel 產生失敗"}), 500
 
     return send_file(
-        __import__("io").BytesIO(xlsx_bytes),
+        io.BytesIO(xlsx_bytes),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="味全代工明細表.xlsx",
@@ -169,11 +166,6 @@ def export_weichuan():
 
 @app.post("/ocr-vtl")
 def ocr_vtl():
-    """
-    Parse 維他露 調撥單 — accepts image (field 'image') or PDF (field 'file').
-    Returns: {orders: [{date, warehouse, matched_items, unmatched_items}, ...]}
-    Each order = one 營業部 block = one Excel row.
-    """
     is_pdf = "file" in request.files
     file   = request.files.get("file") or request.files.get("image")
     if file is None:
@@ -181,7 +173,13 @@ def ocr_vtl():
     if file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    suffix = ".pdf" if is_pdf else (os.path.splitext(file.filename)[1] or ".jpg")
+    if is_pdf:
+        if not file.filename.lower().endswith(".pdf"):
+            return jsonify({"error": "file must be a PDF"}), 400
+        suffix = ".pdf"
+    else:
+        suffix = _image_suffix(file.filename)
+
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
@@ -221,10 +219,6 @@ def ocr_vtl():
 
 @app.post("/export-vtl")
 def export_vtl():
-    """
-    Build 維他露代工明細表 Excel.
-    Body JSON: {"rows": [{date, warehouse, items:[{code,qty}]}, ...]}
-    """
     data = request.get_json(force=True, silent=True) or {}
     rows = data.get("rows", [])
 
@@ -237,7 +231,7 @@ def export_vtl():
         return jsonify({"error": "Excel 產生失敗"}), 500
 
     return send_file(
-        __import__("io").BytesIO(xlsx_bytes),
+        io.BytesIO(xlsx_bytes),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="維他露代工明細表.xlsx",

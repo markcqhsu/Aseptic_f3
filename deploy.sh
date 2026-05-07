@@ -8,5 +8,6 @@ gcloud run deploy aseptic-f3-api \
   --image=asia.gcr.io/cap-ocr/aseptic-f3-api:latest \
   --region=asia-east1 \
   --project=cap-ocr \
+  --service-account=aseptic-f3-api-sa@cap-ocr.iam.gserviceaccount.com \
   --quiet
 echo "✓ Done."
