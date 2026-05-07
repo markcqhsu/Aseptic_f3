@@ -814,7 +814,7 @@ def _parse_vtl_blocks(full_text: str) -> list:
 
 _VTL_CLAUDE_PROMPT = """你正在解析維他露食品股份有限公司的調撥單（訂明細表）。
 
-請提取圖片中每個「N 營業部」區塊的資訊，回傳 JSON。
+請提取圖片中每個編號區塊（如：N 營業部、N 管轄組 等）的資訊，回傳 JSON。
 
 格式：
 {
@@ -832,9 +832,9 @@ _VTL_CLAUDE_PROMPT = """你正在解析維他露食品股份有限公司的調�
 
 規則：
 1. date：排出日期，YY/MM/DD 轉為 YYYY/MM/DD（如 26/05/07 → 2026/05/07）
-2. warehouse：送貨客戶倉庫名稱（如「巨航倉」「員林中倉」）加上 VSR-XXXXXX 訂單編號，合併為一個字串
+2. warehouse：送貨客戶倉庫名稱（如「巨航倉」「員林中倉」）加上 VSR-XXXXXX 或訂單編號，合併為一個字串；若無 VSR 編號則只用倉庫名稱
 3. code：品號原文，不含前面的序號（如 1-），不加空格（如 JAP05801B71、JDP05901BT1）
-4. qty：該品項印刷的阿拉伯數字數量，忽略旁邊所有手寫標記（如 2/3、3/6、1/8 等）
+4. qty：該品項印刷的阿拉伯數字數量（整數），忽略旁邊所有手寫標記（如 2/3、3/6、1/8 等）；若不確定請填 0
 5. 每個品項前面有 CTN 或 CIN 標記，數量在 CTN/CIN 之後
 6. 只回傳 JSON，不要任何說明文字"""
 
@@ -879,7 +879,10 @@ def parse_vtl_with_claude(image_path: str) -> list:
         items = []
         for it in order.get("items", []):
             code = _normalize_vtl_code(str(it.get("code", "")))
-            qty = int(it.get("qty", 0))
+            try:
+                qty = int(it.get("qty", 0) or 0)
+            except (ValueError, TypeError):
+                qty = 0
             if code and qty > 0:
                 items.append({"code": code, "qty": qty})
         if items:
@@ -889,6 +892,8 @@ def parse_vtl_with_claude(image_path: str) -> list:
                 "matched_items":   items,
                 "unmatched_items": [],
             })
+    if not results:
+        raise ValueError(f"Claude returned no usable orders (raw orders count: {len(data.get('orders', []))})")
     return results
 
 
