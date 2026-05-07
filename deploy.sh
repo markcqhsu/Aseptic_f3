@@ -9,5 +9,6 @@ gcloud run deploy aseptic-f3-api \
   --region=asia-east1 \
   --project=cap-ocr \
   --service-account=aseptic-f3-api-sa@cap-ocr.iam.gserviceaccount.com \
+  --set-secrets="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
   --quiet
 echo "✓ Done."

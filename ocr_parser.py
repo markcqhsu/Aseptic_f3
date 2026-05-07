@@ -878,7 +878,10 @@ def parse_vtl_with_claude(image_path: str) -> list:
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
 
+    import sys
+    print(f"[Claude] raw len={len(raw)} preview={raw[:300]}", file=sys.stderr)
     data = json.loads(raw)
+    print(f"[Claude] orders={len(data.get('orders',[]))} first_order_items={len(data.get('orders',[{}])[0].get('items',[]) if data.get('orders') else [])}", file=sys.stderr)
     results = []
     for order in data.get("orders", []):
         items = []
