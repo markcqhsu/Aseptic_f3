@@ -186,10 +186,13 @@ def ocr_vtl():
 
     method = "unknown"
     debug_info = []
+    total_items = None
     try:
         if is_pdf:
             method = "claude_vision_pdf"
-            orders = parse_vtl_pdf(tmp_path)
+            result = parse_vtl_pdf(tmp_path)
+            orders = result["orders"]
+            total_items = result.get("total_items")
         else:
             try:
                 method = "claude_vision"
@@ -214,7 +217,7 @@ def ocr_vtl():
     finally:
         os.unlink(tmp_path)
 
-    return jsonify({"orders": orders, "method": method, "debug": debug_info})
+    return jsonify({"orders": orders, "total_items": total_items, "method": method, "debug": debug_info})
 
 
 @app.post("/export-vtl")

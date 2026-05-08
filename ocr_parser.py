@@ -854,6 +854,7 @@ _VTL_CLAUDE_PROMPT_MULTIPAGE = """你正在解析維他露食品股份有限公�
 
 格式：
 {
+  "total_items": 文件底部「總計項次」後面的數字（找不到則填 null）,
   "orders": [
     {
       "date": "YYYY/MM/DD",
@@ -1016,11 +1017,21 @@ def parse_vtl_pdf_with_claude(pdf_path: str) -> list:
 
     if not results:
         raise ValueError(f"Claude PDF returned no usable orders (raw count: {len(data.get('orders', []))})")
-    return results
+
+    total_items = data.get("total_items")
+    try:
+        total_items = int(total_items) if total_items is not None else None
+    except (ValueError, TypeError):
+        total_items = None
+
+    print(f"[Claude-PDF] total_items={total_items}", file=sys.stderr)
+    return {"orders": results, "total_items": total_items}
 
 
-def parse_vtl_pdf(pdf_path: str) -> list:
-    """Parse 維他露 PDF: Claude Vision (all pages) with Google Vision fallback."""
+def parse_vtl_pdf(pdf_path: str) -> dict:
+    """Parse 維他露 PDF: Claude Vision (all pages) with Google Vision fallback.
+    Returns {"orders": [...], "total_items": int|None}
+    """
     import sys
     try:
         return parse_vtl_pdf_with_claude(pdf_path)
@@ -1039,4 +1050,4 @@ def parse_vtl_pdf(pdf_path: str) -> list:
             all_blocks.extend(parse_vtl_transfer_order(tmp_path))
         finally:
             os.unlink(tmp_path)
-    return all_blocks
+    return {"orders": all_blocks, "total_items": None}

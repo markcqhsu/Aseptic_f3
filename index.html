@@ -347,7 +347,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.9.4</span>
+  <span class="version-badge">v1.9.5</span>
 </header>
 
 <div class="container">
@@ -500,9 +500,10 @@
   <!-- 維他露 multi-block result card -->
   <div class="card" id="vtl-result-card" style="display:none">
     <h2><span class="step-badge">2</span>維他露辨識結果</h2>
-    <div style="background:#e8f4ec; border:1px solid #8cc9a0; border-radius:7px; padding:9px 16px; margin-bottom:14px; font-size:.88rem;">
+    <div style="background:#e8f4ec; border:1px solid #8cc9a0; border-radius:7px; padding:9px 16px; margin-bottom:8px; font-size:.88rem;">
       共辨識出 <strong id="vtl-block-count">0</strong> 個訂單區塊，確認後按「全部加入匯總」。
     </div>
+    <div id="vtl-validation-banner" style="display:none; border-radius:7px; padding:9px 16px; margin-bottom:14px; font-size:.88rem;"></div>
     <div class="table-wrap">
       <table class="items-table">
         <thead>
@@ -838,7 +839,7 @@
         // 可樂 PDF → multi-order flow; 維他露 → always multi-block; 味全 → single-order
         if (currentBrand === "vtl") {
           const orders = data.orders || [];
-          fillVtlResults(orders);
+          fillVtlResults(orders, data.total_items ?? null);
           const debugStr = data.debug?.length ? `（${data.debug.join(" → ")}）` : "";
           if (orders.length === 0) {
             setStatus(`辨識完成但找不到任何訂單區塊，請確認圖片是否正確。${debugStr}`, "error");
@@ -977,7 +978,7 @@
   // ── 維他露 multi-block result display ──────────────────────────────────────
   let _vtlOrders = [];
 
-  function fillVtlResults(orders) {
+  function fillVtlResults(orders, totalItemsDoc) {
     _vtlOrders = orders;
     const card = document.getElementById("vtl-result-card");
     const tbody = document.getElementById("vtl-orders-body");
@@ -1004,7 +1005,7 @@
       tdDel.style.textAlign = "center";
       const delBtn = document.createElement("button");
       delBtn.textContent = "移除"; delBtn.className = "btn-icon";
-      delBtn.onclick = () => { _vtlOrders.splice(idx, 1); fillVtlResults(_vtlOrders); };
+      delBtn.onclick = () => { _vtlOrders.splice(idx, 1); fillVtlResults(_vtlOrders, totalItemsDoc); };
       tdDel.appendChild(delBtn);
 
       tr.append(tdDate, tdWh, tdItems, tdDel);
@@ -1012,6 +1013,22 @@
     });
 
     document.getElementById("vtl-block-count").textContent = orders.length;
+
+    // Validation banner: compare recognized item count vs document 總計項次
+    const banner = document.getElementById("vtl-validation-banner");
+    const recognizedCount = orders.reduce((s, o) => s + (o.matched_items || []).length, 0);
+    if (totalItemsDoc !== null && totalItemsDoc !== undefined) {
+      const match = recognizedCount === totalItemsDoc;
+      banner.style.display = "block";
+      banner.style.background = match ? "#e8f4ec" : "#fff3e0";
+      banner.style.border    = match ? "1px solid #8cc9a0" : "1px solid #ffb74d";
+      banner.innerHTML = match
+        ? `✓ 品項數核對正確：辨識 <strong>${recognizedCount}</strong> 項 = 文件總計項次 <strong>${totalItemsDoc}</strong> 項`
+        : `⚠ 品項數不符：辨識 <strong>${recognizedCount}</strong> 項，文件總計項次為 <strong>${totalItemsDoc}</strong> 項，請人工確認`;
+    } else {
+      banner.style.display = "none";
+    }
+
     card.style.display = "block";
     card.scrollIntoView({ behavior: "smooth" });
   }
