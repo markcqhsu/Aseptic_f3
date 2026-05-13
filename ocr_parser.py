@@ -291,7 +291,39 @@ def parse_pdf_transfer_orders(pdf_path: str, filename: str = "") -> list:
             if result["matched_items"] or result["unmatched_items"]:
                 results.append(result)
 
-    return results
+    return _merge_orders_by_shipment_no(results)
+
+
+def _merge_orders_by_shipment_no(results: list) -> list:
+    """Merge pages with the same shipment_no: sum qty/pallets for identical codes."""
+    seen = {}   # shipment_no → index in merged
+    merged = []
+    for order in results:
+        key = order.get("shipment_no", "")
+        if key and key in seen:
+            existing = merged[seen[key]]
+            for slot in ("matched_items", "unmatched_items"):
+                code_map = {it["code"]: it for it in existing[slot]}
+                for item in order[slot]:
+                    if item["code"] in code_map:
+                        code_map[item["code"]]["qty"]     += item.get("qty", 0)
+                        code_map[item["code"]]["pallets"] += item.get("pallets", 0)
+                    else:
+                        new_item = dict(item)
+                        existing[slot].append(new_item)
+                        code_map[item["code"]] = new_item
+        else:
+            idx = len(merged)
+            if key:
+                seen[key] = idx
+            merged.append({
+                "date":            order["date"],
+                "warehouse":       order["warehouse"],
+                "shipment_no":     order["shipment_no"],
+                "matched_items":   [dict(it) for it in order["matched_items"]],
+                "unmatched_items": [dict(it) for it in order["unmatched_items"]],
+            })
+    return merged
 
 
 def _parse_pdf_table(tables: list) -> list:
