@@ -347,7 +347,7 @@
     <path d="M3 9h18M9 21V9"/>
   </svg>
   <h1>宏全三廠 調撥單辨識系統</h1>
-  <span class="version-badge">v1.9.7</span>
+  <span class="version-badge">v1.9.8</span>
 </header>
 
 <div class="container">
@@ -559,6 +559,11 @@
   const API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
     ? "http://localhost:8080"
     : "https://aseptic-f3-api-65578120182.asia-east1.run.app";
+
+  // Shared key sent with every API call — filters out casual/automated abuse
+  // of the OCR endpoints (which cost real money per call). Not a secret: this
+  // is public static HTML, so treat it as a speed bump, not real auth.
+  const APP_KEY = "1d4352cf93b7287a65b072c68c47490839e844c9";
 
   // ── Brand configs ─────────────────────────────────────────────────────────
   const BRANDS = {
@@ -820,7 +825,7 @@
 
     try {
       const endpoint = pdf ? `${API}${brand.ocrPdfEndpoint}` : `${API}${brand.ocrEndpoint}`;
-      const res = await fetch(endpoint, { method: "POST", body: form });
+      const res = await fetch(endpoint, { method: "POST", headers: { "X-App-Key": APP_KEY }, body: form });
       clearInterval(ticker);
       if (!res.ok) {
         let errMsg = `HTTP ${res.status}`;
@@ -1439,7 +1444,7 @@
     try {
       const res = await fetch(`${API}${brand.exportEndpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Key": APP_KEY },
         body: JSON.stringify({ rows: session }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
